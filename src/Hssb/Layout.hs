@@ -1,17 +1,32 @@
+{-# LANGUAGE RecordWildCards #-}
+
 module Hssb.Layout where
 
 import Hssb.Data
 import System.Directory (doesFileExist)
 import Data.Aeson.Types (Value(Object), Object)
-import Data.HashMap.Strict (HashMap, lookup, fromList)
-import Control.Arrow
-import Control.Monad.Trans
+import Data.HashMap.Strict (HashMap, lookup)
+import Data.Yaml ((.:))
 import Control.Monad.Trans.Except
 import Control.Monad.Except
+import qualified Data.Text as T
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Yaml as Y
 
 type IODocResult a = ExceptT DocError IO a
+
+data LayoutFile = LayoutFile {
+    output    :: String,
+    macroName :: String,
+    contents  :: HashMap T.Text Value
+} deriving (Show)
+
+instance Y.FromJSON LayoutFile where
+    parseJSON = Y.withObject "LayoutFile" $ \o -> do
+        output <- o .: T.pack "output"
+        macroName <- o .: T.pack "macro-name"
+        let contents = o
+        return LayoutFile{..}
 
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f (Left x) = Left $ f x

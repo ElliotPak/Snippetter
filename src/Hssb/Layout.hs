@@ -4,13 +4,14 @@
 
 module Hssb.Layout where
 
-import Prelude hiding (lookup)
-import System.Directory (doesFileExist)
-import Data.Aeson.Types (Object, Value (Object, String))
-import Data.HashMap.Strict (HashMap, lookup)
-import Data.Yaml ((.:))
 import Control.Monad.Trans.Except
 import Control.Monad.Except
+import Data.Aeson.Types (Object, Value (Object, String))
+import Data.HashMap.Strict (HashMap, lookup)
+import Data.Maybe (fromMaybe)
+import Data.Yaml ((.:))
+import Prelude hiding (lookup)
+import System.Directory (doesFileExist)
 import qualified Data.Text as T
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Yaml as Y
@@ -19,11 +20,10 @@ type IODocResult a = ExceptT DocError IO a
 type MacroResult = Either DocError Doc
 type MacroParams = HashMap T.Text Value
 type Macro = MacroParams -> MacroResult
+type Doc = [Content]
 
 instance Show Macro where
     show m = "MACRO"
-
-type Doc = [Content]
 
 data DocError =
     AbsentKey String |
@@ -55,39 +55,8 @@ instance Y.FromJSON LayoutFile where
         let contents = o
         return LayoutFile{..}
 
-startDoc :: Content -> MacroResult
-startDoc content = Right [content]
-
-addContent :: Doc -> Content -> MacroResult
-addContent doc content = Right $ doc ++ [content]
-
 replaceWithText :: String -> String -> Content
 replaceWithText search replace = Replacement search $ [PlainText replace]
-
-lookupEither :: String -> HashMap T.Text a -> Either DocError a
-lookupEither key map =
-    case (lookup keyT map) of
-      Just a -> Right a
-      Nothing -> Left $ AbsentKey key
-    where keyT = T.pack key
-
-lookupString :: String -> MacroParams -> Either DocError String
-lookupString key map =
-    case (lookupEither key map) of
-      Left x           -> Left x
-      Right (String o) -> Right $ T.unpack o
-      Right _          -> Left $ WrongKeyType key
-
-lookupObject :: String -> MacroParams -> Either DocError Object
-lookupObject key map = 
-    case (lookupEither key map) of
-      Left x           -> Left x
-      Right (Object o) -> Right o
-      Right _          -> Left $ WrongKeyType key
-
-mapLeft :: (a -> b) -> Either a c -> Either b c
-mapLeft f (Left x) = Left $ f x
-mapLeft _ (Right x) = Right x
 
 contentsIfExists :: FilePath -> IODocResult String
 contentsIfExists path = do
@@ -98,6 +67,10 @@ contentsIfExists path = do
 
 decodeValue :: String -> Either Y.ParseException Value
 decodeValue str = Y.decodeEither' $ B.pack str
+
+mapLeft :: (a -> b) -> Either a c -> Either b c
+mapLeft f (Left x) = Left $ f x
+mapLeft _ (Right x) = Right x
 
 valueIfExists :: FilePath -> IODocResult Value
 valueIfExists path = do

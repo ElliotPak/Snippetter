@@ -1,10 +1,12 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Hssb.Layout where
 
-import Hssb.Data
+import Prelude hiding (lookup)
 import System.Directory (doesFileExist)
-import Data.Aeson.Types (Value(Object), Object)
+import Data.Aeson.Types (Object, Value (Object, String))
 import Data.HashMap.Strict (HashMap, lookup)
 import Data.Yaml ((.:))
 import Control.Monad.Trans.Except
@@ -14,6 +16,31 @@ import qualified Data.ByteString.Char8 as B
 import qualified Data.Yaml as Y
 
 type IODocResult a = ExceptT DocError IO a
+type MacroResult = Either DocError Doc
+type MacroParams = HashMap T.Text Value
+type Macro = MacroParams -> MacroResult
+
+instance Show Macro where
+    show m = "MACRO"
+
+type Doc = [Content]
+
+data DocError =
+    AbsentKey String |
+    WrongKeyType String |
+    InvalidPath FilePath |
+    NotYaml FilePath |
+    InvalidFileFormat FilePath |
+    MiscError String
+    deriving (Show)
+
+data Content =
+    Snippet String |
+    Replacement String Doc |
+    PlainText String |
+    ApplyMacroToFile Macro FilePath |
+    SubDocument Doc
+    deriving (Show)
 
 data LayoutFile = LayoutFile {
     output    :: String,
@@ -27,6 +54,36 @@ instance Y.FromJSON LayoutFile where
         macroName <- o .: T.pack "macro-name"
         let contents = o
         return LayoutFile{..}
+
+startDoc :: Content -> MacroResult
+startDoc content = Right [content]
+
+addContent :: Doc -> Content -> MacroResult
+addContent doc content = Right $ doc ++ [content]
+
+replaceWithText :: String -> String -> Content
+replaceWithText search replace = Replacement search $ [PlainText replace]
+
+lookupEither :: String -> HashMap T.Text a -> Either DocError a
+lookupEither key map =
+    case (lookup keyT map) of
+      Just a -> Right a
+      Nothing -> Left $ AbsentKey key
+    where keyT = T.pack key
+
+lookupString :: String -> MacroParams -> Either DocError String
+lookupString key map =
+    case (lookupEither key map) of
+      Left x           -> Left x
+      Right (String o) -> Right $ T.unpack o
+      Right _          -> Left $ WrongKeyType key
+
+lookupObject :: String -> MacroParams -> Either DocError Object
+lookupObject key map = 
+    case (lookupEither key map) of
+      Left x           -> Left x
+      Right (Object o) -> Right o
+      Right _          -> Left $ WrongKeyType key
 
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f (Left x) = Left $ f x
@@ -54,7 +111,6 @@ loadEntryFile macro path = do
     withMacros <- applyMacrosToFile doc
     return withMacros
 
-applyMacrosToFile :: Doc -> IODocResult Doc
 applyMacrosToFile = mapM applyMacrosToContent
 
 applyMacrosToContent :: Content -> IODocResult Content
@@ -67,7 +123,5 @@ applyMacrosToContent (Replacement s d) = do
 applyMacrosToContent c = return c
 
 decodeEntryFile :: Macro -> FilePath -> Value -> MacroResult
-decodeEntryFile macro path layout =
-    case layout of
-      Object params -> macro params
-      otherwise     -> Left  $ InvalidFileFormat path
+decodeEntryFile macro path (Object params) = macro params
+decodeEntryFile _     path _               = Left $ InvalidFileFormat path

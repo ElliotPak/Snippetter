@@ -1,12 +1,28 @@
 module Hssb.MacroTest where
 
 import Hssb.Data
-import qualified Data.Text as T
+import Data.List.Split
+import System.FilePath
 
 lookupTitle = lookupString "title"
 lookupName = lookupString "name"
 lookupDesc = lookupString "desc"
 lookupLink = lookupString "link"
+
+relativePath :: FilePath -> FilePath -> FilePath
+relativePath from to = rel "" splitFrom splitTo
+    where
+        splitTo   = splitOn [pathSeparator] to
+        splitFrom = splitOn [pathSeparator] from
+        rel path []     []     = path
+        rel path (x:[]) []     = path
+        rel path (x:xs) []     = rel (".." </> path) xs []
+        rel path []     (y:ys) = rel (path </> y) [] ys
+        rel path (x:xs) (y:ys)
+          | path /= "" && xs /= [] = rel (".." </> path </> y) xs ys
+          | path /= "" && xs == [] = rel (path </> y) xs ys
+          | x == y                 = rel path xs ys
+          | otherwise              = rel (".." </> path </> y) xs ys
 
 pageStandard :: MacroParams -> MacroResult
 pageStandard params = do
@@ -16,10 +32,10 @@ pageStandard params = do
             Snippet "resources/snippets/pageStandard.html",
             Replacement "%CONTENT%"
                 [Snippet "resources/snippets/title.html",
-                Snippet "resources/snippets/paragraph.html",
-                replaceWithText "%TITLE%" title,
-                replaceWithText "%DESC%" desc,
-                PlainText "%ENTRIES%"
+                 Snippet "resources/snippets/paragraph.html",
+                 replaceWithText "%TITLE%" title,
+                 replaceWithText "%DESC%" desc,
+                 PlainText "%ENTRIES%"
                 ]
            ]
 

@@ -12,42 +12,31 @@ import qualified Data.Text as T
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Yaml as Y
 
-contentsIfExists :: FilePath -> IODocResult String
+contentsIfExists :: MonadReadFile m => FilePath -> DocResult m T.Text
 contentsIfExists path = do
-    exists <- liftIO $ doesFileExist path
+    exists <- lift $ fileExists path
     case exists of
       False -> throwE $ InvalidPath path
-      True  -> liftIO $ readFile path
+      True  -> getFileContents path
 
-decodeValue :: String -> Either Y.ParseException Value
-decodeValue str = Y.decodeEither' $ B.pack str
+decodeValue :: T.Text -> Either Y.ParseException Value
+decodeValue str = Y.decodeEither' $ B.pack $ T.unpack str
 
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f (Left x) = Left $ f x
 mapLeft _ (Right x) = Right x
 
-valueIfExists :: FilePath -> IODocResult Value
+valueIfExists :: MonadReadFile m => FilePath -> DocResult m Value
 valueIfExists path = do
     contents <- contentsIfExists path
     liftEither $ mapLeft (\x -> NotYaml path) $ decodeValue contents
 
-loadEntryFile :: Macro -> FilePath -> IODocResult Doc
+loadEntryFile :: MonadReadFile m => Macro -> FilePath -> DocResult m T.Text
 loadEntryFile macro path = do
     value <- valueIfExists path
     doc <- liftEither $ decodeEntryFile macro path value
-    withMacros <- applyMacrosToFile doc
-    return withMacros
-
-applyMacrosToFile = mapM applyMacrosToContent
-
-applyMacrosToContent :: Content -> IODocResult Content
-applyMacrosToContent (ApplyMacroToFile m f) = do
-    subEntry <- loadEntryFile m f
-    return $ SubDocument subEntry
-applyMacrosToContent (Replacement s d) = do
-    replacement <- applyMacrosToFile d
-    return $ Replacement s replacement
-applyMacrosToContent c = return c
+    resolved <- resolveContents doc
+    return (execute T.empty resolved)
 
 decodeEntryFile :: Macro -> FilePath -> Value -> MacroResult
 decodeEntryFile macro path (Object params) = macro params

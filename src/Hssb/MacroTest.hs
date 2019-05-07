@@ -13,14 +13,14 @@ pageStandard :: MacroParams -> MacroResult
 pageStandard params = do
     title <- lookupTitle params
     desc <- lookupDesc params
-    return [Snippet "build-snippets/header.html",
-            Snippet "resources/snippets/pageStandard.html",
-            Replacement "%CONTENT%"
-                [Snippet "resources/snippets/title.html",
-                 Snippet "resources/snippets/paragraph.html",
-                 replaceWithText "%TITLE%" title,
-                 replaceWithText "%DESC%" desc,
-                 PlainText "%ENTRIES%"
+    return [add $ Snippet "build-snippets/header.html",
+            add $ Snippet "resources/snippets/pageStandard.html",
+            replace "%CONTENT%"
+                [add $ Snippet "resources/snippets/title.html",
+                 add $ Snippet "resources/snippets/paragraph.html",
+                 -- replaceWithText "%TITLE%" title,
+                 -- replaceWithText "%DESC%" desc,
+                 add $ "%ENTRIES%"
                 ]
            ]
 
@@ -29,20 +29,20 @@ entryTitle params = do
     title <- lookupTitle params
     desc <- lookupDesc params
     link <- lookupLink params
-    return [Snippet "resources/snippets/entryTitle.html",
-            replaceWithText "%TITLE%" title,
-            replaceWithText "%DESC%" desc,
-            replaceWithText "%LINK%" link
+    return [add $ Snippet "resources/snippets/entryTitle.html",
+            replace "%TITLE%" title,
+            replace "%DESC%" desc,
+            replace "%LINK%" link
            ]
 
-pageTitle :: MacroParams -> MacroResult
-pageTitle params = do
-    title <- lookupName params
-    desc <- lookupDesc params
-    entriesFile <- lookupString "entries-file" params
-    return [Snippet "resources/snippets/pageTitle.html",
-            replaceWithText "%TITLE%" title,
-            replaceWithText "%DESC%" desc,
-            Replacement "%ENTRIES%"
-                [ApplyMacroToFile entryTitle entriesFile]
-           ]
+-- pageTitle :: MacroParams -> MacroResult
+-- pageTitle params = do
+--     title <- lookupName params
+--     desc <- lookupDesc params
+--     entriesFile <- lookupString "entries-file" params
+--     return [Snippet "resources/snippets/pageTitle.html",
+--             replaceWithText "%TITLE%" title,
+--             replaceWithText "%DESC%" desc,
+--             Replacement "%ENTRIES%"
+--                 [ApplyMacroToFile entryTitle entriesFile]
+--            ]

@@ -1,6 +1,6 @@
 module Hssb.Utilities where
 
-import Hssb.Layout.Types (DocError (AbsentKey, WrongKeyType))
+import Hssb.Layout.Types
 import Data.Aeson.Types (Object, Value (Object, String))
 import Data.HashMap.Strict (HashMap, lookup)
 import Data.List.Split
@@ -12,7 +12,7 @@ maybeToEither :: l -> Maybe r -> Either l r
 maybeToEither fail (Nothing) = Left fail
 maybeToEither _    (Just a)  = Right a
 
-lookupEither :: (Value -> Maybe a) -> String -> HashMap T.Text Value -> Either DocError a
+lookupEither :: (Value -> Maybe a) -> String -> MacroParams -> Either DocError a
 lookupEither get key map = do
     thing <- maybeToEither (AbsentKey key) (lookup keyT map)
     maybeToEither (WrongKeyType key) (get thing)
@@ -26,11 +26,17 @@ unObject :: Value -> Maybe (HashMap T.Text Value)
 unObject (Object o) = Just o
 unObject _          = Nothing
 
-lookupString :: String -> HashMap T.Text Value -> Either DocError String
+lookupString :: String -> MacroParams -> Either DocError String
 lookupString = lookupEither unString
 
-lookupObject :: String -> HashMap T.Text Value -> Either DocError (HashMap T.Text Value)
+lookupObject :: String -> MacroParams -> Either DocError (HashMap T.Text Value)
 lookupObject = lookupEither unObject
+
+add :: Contentable c => c -> Action
+add c = Action $ Add $ Content $ c
+
+replace :: Actionable a => String -> a -> Action
+replace t d = Action (Replace (T.pack t) (Action d))
 
 relativePath :: FilePath -> FilePath -> FilePath
 relativePath from to = rel "" splitFrom splitTo

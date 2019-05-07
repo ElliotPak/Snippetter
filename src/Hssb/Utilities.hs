@@ -1,9 +1,11 @@
 module Hssb.Utilities where
 
-import Hssb.Layout (DocError (AbsentKey, WrongKeyType))
+import Hssb.Layout.Types (DocError (AbsentKey, WrongKeyType))
 import Data.Aeson.Types (Object, Value (Object, String))
 import Data.HashMap.Strict (HashMap, lookup)
+import Data.List.Split
 import Prelude hiding (lookup)
+import System.FilePath
 import qualified Data.Text as T
 
 maybeToEither :: l -> Maybe r -> Either l r

@@ -1,9 +1,8 @@
 module Hssb.MacroTest where
 
 import Hssb.Layout
+import Hssb.Layout.Types
 import Hssb.Utilities
-import Data.List.Split
-import System.FilePath
 
 lookupTitle = lookupString "title"
 lookupName = lookupString "name"

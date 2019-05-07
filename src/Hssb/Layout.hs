@@ -1,62 +1,16 @@
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
-
 module Hssb.Layout where
 
 import Control.Monad.Trans.Except
 import Control.Monad.Except
 import Data.Aeson.Types (Object, Value (Object, String))
 import Data.HashMap.Strict (HashMap, lookup)
-import Data.Maybe (fromMaybe)
 import Data.Yaml ((.:))
+import Hssb.Layout.Types
 import Prelude hiding (lookup)
 import System.Directory (doesFileExist)
 import qualified Data.Text as T
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Yaml as Y
-
-type IODocResult a = ExceptT DocError IO a
-type MacroResult = Either DocError Doc
-type MacroParams = HashMap T.Text Value
-type Macro = MacroParams -> MacroResult
-type Doc = [Content]
-
-instance Show Macro where
-    show m = "MACRO"
-
-data DocError =
-    AbsentKey String |
-    WrongKeyType String |
-    InvalidPath FilePath |
-    NotYaml FilePath |
-    InvalidFileFormat FilePath |
-    MiscError String
-    deriving (Show)
-
-data Content =
-    Snippet String |
-    Replacement String Doc |
-    PlainText String |
-    ApplyMacroToFile Macro FilePath |
-    SubDocument Doc
-    deriving (Show)
-
-data LayoutFile = LayoutFile {
-    output    :: String,
-    macroName :: String,
-    contents  :: HashMap T.Text Value
-} deriving (Show)
-
-instance Y.FromJSON LayoutFile where
-    parseJSON = Y.withObject "LayoutFile" $ \o -> do
-        output <- o .: T.pack "output"
-        macroName <- o .: T.pack "macro-name"
-        let contents = o
-        return LayoutFile{..}
-
-replaceWithText :: String -> String -> Content
-replaceWithText search replace = Replacement search $ [PlainText replace]
 
 contentsIfExists :: FilePath -> IODocResult String
 contentsIfExists path = do

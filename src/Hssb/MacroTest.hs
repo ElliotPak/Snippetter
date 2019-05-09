@@ -1,5 +1,6 @@
 module Hssb.MacroTest where
 
+import Control.Monad.Trans.Except
 import Hssb.Layout
 import Hssb.Layout.Types
 import Hssb.Utilities
@@ -11,6 +12,13 @@ lookupName = lookupString "name"
 lookupDesc = lookupString "desc"
 lookupLink = lookupString "link"
 
+test :: Macro -> FilePath -> IO ()
+test macro path = do
+    results <- runExceptT $ executeEntryFile macro path
+    case results of
+      (Right r) -> TIO.putStr r
+      (Left l)  -> putStr $ show l
+
 pageStandard :: MacroParams -> MacroResult
 pageStandard params = do
     title <- lookupTitle params
@@ -20,8 +28,8 @@ pageStandard params = do
             replace "%CONTENT%"
                 [add $ Snippet "resources/snippets/title.html",
                  add $ Snippet "resources/snippets/paragraph.html",
-                 replace "%TITLE%" title,
-                 replace "%DESC%" desc,
+                 replaceText "%TITLE%" title,
+                 replaceText "%DESC%" desc,
                  add "%ENTRIES%"
                 ]
            ]
@@ -32,9 +40,9 @@ entryTitle params = do
     desc <- lookupDesc params
     link <- lookupLink params
     return [add $ Snippet "resources/snippets/entryTitle.html",
-            replace "%TITLE%" title,
-            replace "%DESC%" desc,
-            replace "%LINK%" link
+            replaceText "%TITLE%" title,
+            replaceText "%DESC%" desc,
+            replaceText "%LINK%" link
            ]
 
 pageTitle :: MacroParams -> MacroResult
@@ -43,7 +51,7 @@ pageTitle params = do
     desc <- lookupDesc params
     entries <- lookupString "entries-file" params
     return [add $ Snippet "resources/snippets/pageTitle.html",
-            replace "%TITLE%" title,
-            replace "%DESC%" desc,
+            replaceText "%TITLE%" title,
+            replaceText "%DESC%" desc,
             replace "%ENTRIES%" $ add (MacroOnFile entryTitle entries)
            ]

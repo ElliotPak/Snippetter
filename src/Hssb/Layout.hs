@@ -46,8 +46,7 @@ loadEntryFile macro path = do
 executeEntryFile :: MonadReadFile m => Macro -> FilePath -> DocResult m T.Text
 executeEntryFile macro path = do
     doc <- loadEntryFile macro path
-    resolved <- resolveContents doc
-    return (execute T.empty resolved)
+    resolveContents doc T.empty
 
 executeMacro :: Macro -> FilePath -> Value -> MacroResult
 executeMacro macro path (Object params) = macro params

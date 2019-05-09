@@ -20,7 +20,6 @@ type MacroResult = Either DocError Doc
 type MacroParams = HashMap T.Text Value
 type Macro = MacroParams -> MacroResult
 type Doc = [Action]
-type ExecutableDoc = [Execute]
 
 data DocError =
     AbsentKey String |
@@ -47,25 +46,20 @@ class NeedsFiles n where
 
 class NeedsFiles c => Contentable c where
     resolve        :: MonadReadFile m => c -> DocResult m T.Text
+    asDoc          :: c -> Doc
+    asDoc c = [Action $ Add c]
 
 class NeedsFiles a => Actionable a where
-    resolveContents :: MonadReadFile m => a -> DocResult m Execute
-
-class Executable e where
-    execute :: T.Text -> e -> T.Text
+    resolveContents :: MonadReadFile m => a -> T.Text -> DocResult m T.Text
 
 data Content = forall c. (Contentable c) => Content c
 data Action = forall a. (Actionable a) => Action a
-data Execute = forall e. (Executable e) => Execute e
 
 data Snippet = Snippet FilePath
 data MacroOnFile = MacroOnFile Macro FilePath
 
 data Add = forall c. (Contentable c) => Add c
 data Replace = forall a. (Actionable a) => Replace T.Text a
-
-data AddExec = forall e. (Executable e) => AddExec e
-data ReplaceExec = forall e. (Executable e) => ReplaceExec T.Text e
 
 instance MonadReadFile IO where
     getFileContents s = do
@@ -94,53 +88,31 @@ instance Contentable Snippet where
 instance NeedsFiles Action where
     getNeededFiles (Action a) = getNeededFiles a
 instance Actionable Action where
-    resolveContents (Action a) = do
-        aa <- resolveContents a
-        return $ Execute aa
+    resolveContents (Action a) = resolveContents a
 
 instance NeedsFiles Add where
     getNeededFiles (Add a) = getNeededFiles a
 instance Actionable Add where
-    resolveContents (Add a)     = do
+    resolveContents (Add a) t = do
         aa <- resolve a
-        return $ Execute (AddExec aa)
+        return $ T.concat [aa, t]
 
 instance NeedsFiles Replace where
     getNeededFiles (Replace t d) = getNeededFiles d
 instance Actionable Replace where
-    resolveContents (Replace t d) = do
-        dd <- resolveContents d
-        return $ Execute (ReplaceExec t dd)
+    resolveContents (Replace t d) text = do
+        dd <- resolveContents d T.empty
+        return $ T.replace t dd text
 
 instance NeedsFiles Doc where
     getNeededFiles doc = do
         mapped <- mapM getNeededFiles doc
         return $ concat mapped
 instance Actionable Doc where
-    resolveContents doc = do
-        dd <- mapM resolveContents doc
-        return $ Execute dd
-
-instance Actionable String where
-    resolveContents str = return $ Execute str
-
-instance Executable Execute where
-    execute s (Execute a) = execute s a
-
-instance Executable ExecutableDoc where
-    execute s d = foldl execute s d
-
-instance Executable String where
-    execute s d = T.pack d
-
-instance Executable T.Text where
-    execute s d = d
-
-instance Executable ReplaceExec where
-    execute s (ReplaceExec t d) = T.replace t (execute T.empty d) s
-
-instance Executable AddExec where
-    execute s (AddExec e) = T.concat [s, execute T.empty e]
+    resolveContents (x:xs) text = do
+        head <- resolveContents x text
+        resolveContents xs head
+    resolveContents [] text = return text
 
 instance Y.FromJSON LayoutFile where
     parseJSON = Y.withObject "LayoutFile" $ \o -> do

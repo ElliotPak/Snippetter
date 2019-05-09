@@ -33,10 +33,13 @@ lookupObject :: String -> MacroParams -> Either DocError (HashMap T.Text Value)
 lookupObject = lookupEither unObject
 
 add :: Contentable c => c -> Action
-add c = Action $ Add $ Content $ c
+add c = Action $ Add c
 
 replace :: Actionable a => String -> a -> Action
-replace t d = Action (Replace (T.pack t) (Action d))
+replace t d = Action $ Replace (T.pack t) d
+
+replaceText :: String -> String -> Action
+replaceText t d = replace t (asDoc d)
 
 relativePath :: FilePath -> FilePath -> FilePath
 relativePath from to = rel "" splitFrom splitTo

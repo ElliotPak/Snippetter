@@ -41,10 +41,14 @@ class Monad m => MonadReadFile m where
     getFileContents :: FilePath -> DocResult m T.Text
     fileExists :: FilePath -> m Bool
 
-class Contentable c where
-    resolve :: MonadReadFile m => c -> DocResult m T.Text
+class NeedsFiles n where
+    getNeededFiles :: MonadReadFile m => n -> DocResult m [FilePath]
+    getNeededFiles _ = return []
 
-class Actionable a where
+class NeedsFiles c => Contentable c where
+    resolve        :: MonadReadFile m => c -> DocResult m T.Text
+
+class NeedsFiles a => Actionable a where
     resolveContents :: MonadReadFile m => a -> DocResult m Execute
 
 class Executable e where
@@ -69,36 +73,49 @@ instance MonadReadFile IO where
         return (T.pack str)
     fileExists = doesFileExist
 
+instance NeedsFiles Content where
+    getNeededFiles (Content c) = getNeededFiles c
 instance Contentable Content where
     resolve (Content c) = resolve c
 
+instance NeedsFiles T.Text where
 instance Contentable T.Text where
     resolve s = return s
 
+instance NeedsFiles String where
 instance Contentable String where
     resolve s = return (T.pack s)
 
+instance NeedsFiles Snippet where
+    getNeededFiles (Snippet s) = return [s]
 instance Contentable Snippet where
     resolve (Snippet p) = getFileContents p
 
-instance Contentable MacroOnFile where
-    resolve (MacroOnFile m f) = undefined
-
+instance NeedsFiles Action where
+    getNeededFiles (Action a) = getNeededFiles a
 instance Actionable Action where
     resolveContents (Action a) = do
         aa <- resolveContents a
         return $ Execute aa
 
+instance NeedsFiles Add where
+    getNeededFiles (Add a) = getNeededFiles a
 instance Actionable Add where
     resolveContents (Add a)     = do
         aa <- resolve a
         return $ Execute (AddExec aa)
 
+instance NeedsFiles Replace where
+    getNeededFiles (Replace t d) = getNeededFiles d
 instance Actionable Replace where
     resolveContents (Replace t d) = do
         dd <- resolveContents d
         return $ Execute (ReplaceExec t dd)
 
+instance NeedsFiles Doc where
+    getNeededFiles doc = do
+        mapped <- mapM getNeededFiles doc
+        return $ concat mapped
 instance Actionable Doc where
     resolveContents doc = do
         dd <- mapM resolveContents doc

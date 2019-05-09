@@ -3,6 +3,8 @@ module Hssb.MacroTest where
 import Hssb.Layout
 import Hssb.Layout.Types
 import Hssb.Utilities
+import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
 
 lookupTitle = lookupString "title"
 lookupName = lookupString "name"
@@ -18,9 +20,9 @@ pageStandard params = do
             replace "%CONTENT%"
                 [add $ Snippet "resources/snippets/title.html",
                  add $ Snippet "resources/snippets/paragraph.html",
-                 -- replaceWithText "%TITLE%" title,
-                 -- replaceWithText "%DESC%" desc,
-                 add $ "%ENTRIES%"
+                 replace "%TITLE%" title,
+                 replace "%DESC%" desc,
+                 add "%ENTRIES%"
                 ]
            ]
 
@@ -35,14 +37,13 @@ entryTitle params = do
             replace "%LINK%" link
            ]
 
--- pageTitle :: MacroParams -> MacroResult
--- pageTitle params = do
---     title <- lookupName params
---     desc <- lookupDesc params
---     entriesFile <- lookupString "entries-file" params
---     return [Snippet "resources/snippets/pageTitle.html",
---             replaceWithText "%TITLE%" title,
---             replaceWithText "%DESC%" desc,
---             Replacement "%ENTRIES%"
---                 [ApplyMacroToFile entryTitle entriesFile]
---            ]
+pageTitle :: MacroParams -> MacroResult
+pageTitle params = do
+    title <- lookupTitle params
+    desc <- lookupDesc params
+    entries <- lookupString "entries-file" params
+    return [add $ Snippet "resources/snippets/pageTitle.html",
+            replace "%TITLE%" title,
+            replace "%DESC%" desc,
+            replace "%ENTRIES%" $ add (MacroOnFile entryTitle entries)
+           ]

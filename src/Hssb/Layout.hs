@@ -18,6 +18,10 @@ data SiteAction =
     Copy FilePath FilePath
     deriving (Show)
 
+executeMacro :: Macro -> MacroParams -> Result
+executeMacro m (MacroParams params path) =
+    mapLeft (convertMacroError path) $ m params
+
 contentsIfExists :: MonadReadFile m => FilePath -> DocResult m T.Text
 contentsIfExists path = do
     exists <- lift $ fileExists path
@@ -38,11 +42,15 @@ valueIfExists :: MonadReadFile m => FilePath -> DocResult m Value
 valueIfExists = yamlIfExists
 
 loadLayoutFile :: MonadReadFile m => FilePath -> DocResult m LayoutFile
-loadLayoutFile = yamlIfExists
+loadLayoutFile path = do
+    y <- yamlIfExists path :: MonadReadFile m => DocResult m LayoutFile
+    return $ addPath path y
 
-layoutToAction :: HashMap String Macro -> LayoutFile -> Either DocError SiteAction
+layoutToAction ::
+    HashMap String Macro -> LayoutFile ->
+    Either DocError SiteAction
 layoutToAction map layout = do
-    let mp = contents layout
+    let mp = MacroParams (contents layout) (input layout)
     let f  = output layout
     let mn = macroName layout
     m <- lookupEither (MissingMacro mn) mn map
@@ -55,14 +63,14 @@ loadBuildAction path map = do
     liftEither $ layoutToAction map layout
 
 filesNeeded :: MonadReadFile m => Macro -> MacroParams -> DocResult m [FilePath]
-filesNeeded m mp = (liftEither $ m mp) >>= getNeededFiles
+filesNeeded m mp = (liftEither $ executeMacro m mp) >>= getNeededFiles
 
 filesNeededForAction :: MonadReadFile m => SiteAction -> DocResult m [FilePath]
 filesNeededForAction (Build m mp f) = filesNeeded m mp
 
 executeSiteAction :: MonadReadFile m => SiteAction -> DocResult m T.Text
 executeSiteAction (Build m mp f) = do 
-    executed <- liftEither $ m mp
+    executed <- liftEither $ executeMacro m mp
     resolveContents executed T.empty
 executeSiteAction _              = undefined
 
@@ -72,12 +80,14 @@ executeLayoutFile path map = loadBuildAction path map >>= executeSiteAction
 
 macroOnEntryFile :: MonadReadFile m => Macro -> FilePath -> DocResult m Doc
 macroOnEntryFile macro path = do
-    values <- yamlIfExists path :: MonadReadFile m => DocResult m [MacroParams]
-    liftEither $ macroOnValues macro values
+    values <- yamlIfExists path :: MonadReadFile m => DocResult m [Params]
+    let addPath x = MacroParams x $ Just path
+    let mp = map addPath values
+    liftEither $ macroOnValues macro mp
 
 macroOnValues :: Macro -> [MacroParams] -> Either DocError Doc
 macroOnValues m v = do
-    mapped <- mapM m v
+    mapped <- mapM (executeMacro m) v
     return $ concat mapped
 
 instance NeedsFiles MacroOnFile where

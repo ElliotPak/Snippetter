@@ -23,7 +23,7 @@ lookupEither def key value =
       Nothing -> Left def
       Just a  -> Right a
 
-lookupParams :: (Value -> Maybe a) -> String -> MacroParams -> Either DocError a
+lookupParams :: (Value -> Maybe a) -> String -> Params -> Either MacroError a
 lookupParams get key map = do
     thing <- lookupEither (AbsentKey key) keyT map
     maybeToEither (WrongKeyType key) (get thing)
@@ -33,14 +33,14 @@ unString :: Value -> Maybe String
 unString (String s) = Just $ T.unpack s
 unString _          = Nothing
 
-unObject :: Value -> Maybe (HashMap T.Text Value)
+unObject :: Value -> Maybe Params
 unObject (Object o) = Just o
 unObject _          = Nothing
 
-lookupString :: String -> MacroParams -> Either DocError String
+lookupString :: String -> Params -> Either MacroError String
 lookupString = lookupParams unString
 
-lookupObject :: String -> MacroParams -> Either DocError (HashMap T.Text Value)
+lookupObject :: String -> Params -> Either MacroError Params
 lookupObject = lookupParams unObject
 
 addString :: String -> Action

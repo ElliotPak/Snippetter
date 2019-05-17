@@ -15,14 +15,25 @@ import qualified Data.Yaml as Y
 import qualified Data.Text as T
 
 type DocResult m a = ExceptT DocError m a
-type MacroResult = Either DocError Doc
-type MacroParams = HashMap T.Text Value
-type Macro = MacroParams -> MacroResult
+type Result = Either DocError Doc
+type MacroResult = Either MacroError Doc
+type Params = HashMap T.Text Value
+type Macro = Params -> Either MacroError Doc
 type Doc = [Action]
 
-data DocError =
+data MacroParams = MacroParams {
+    params :: Params,
+    path   :: Maybe FilePath
+  } deriving (Show)
+
+data MacroError =
     AbsentKey String |
-    WrongKeyType String |
+    WrongKeyType String
+    deriving (Show)
+
+data DocError =
+    AbsentKeyInFile String (Maybe FilePath) |
+    WrongKeyTypeInFile String (Maybe FilePath) |
     InvalidPath FilePath |
     NotYaml FilePath |
     InvalidFileFormat FilePath |
@@ -30,11 +41,27 @@ data DocError =
     MiscError String
     deriving (Show)
 
+convertMacroError :: Maybe FilePath -> MacroError -> DocError
+convertMacroError path (AbsentKey s) = AbsentKeyInFile s path
+convertMacroError path (WrongKeyType s) = WrongKeyTypeInFile s path
+
 data LayoutFile = LayoutFile {
+    input     :: Maybe FilePath,
     output    :: FilePath,
     macroName :: String,
     contents  :: HashMap T.Text Value
 } deriving (Show)
+
+addPath :: FilePath -> LayoutFile -> LayoutFile
+addPath p (LayoutFile _ o m c) = LayoutFile (Just p) o m c
+
+instance Y.FromJSON LayoutFile where
+    parseJSON = Y.withObject "LayoutFile" $ \o -> do
+        let input = Nothing
+        output <- o .: T.pack "output"
+        macroName <- o .: T.pack "macro-name"
+        contents <- o .: T.pack "values"
+        return $ LayoutFile {..}
 
 instance Show Macro where
     show s = "MACRO"
@@ -119,10 +146,3 @@ data MacroOnFile = MacroOnFile Macro FilePath
 
 data Add = forall c. (Contentable c) => Add c
 data Replace = forall a. (Actionable a) => Replace T.Text a
-
-instance Y.FromJSON LayoutFile where
-    parseJSON = Y.withObject "LayoutFile" $ \o -> do
-        output <- o .: T.pack "output"
-        macroName <- o .: T.pack "macro-name"
-        contents <- o .: T.pack "values"
-        return $ LayoutFile {..}

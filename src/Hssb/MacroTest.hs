@@ -9,7 +9,7 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 
 macroMap :: HashMap String Macro
-macroMap = fromList [("title-page", entryTitle)]
+macroMap = fromList [("title-page", pageTitle)]
 
 displayDocResult :: DocResult IO T.Text -> IO ()
 displayDocResult doc = do
@@ -23,7 +23,7 @@ lookupName = lookupString "name"
 lookupDesc = lookupString "desc"
 lookupLink = lookupString "link"
 
-pageStandard :: MacroParams -> MacroResult
+pageStandard :: Params -> MacroResult
 pageStandard params = do
     title <- lookupTitle params
     desc <- lookupDesc params
@@ -38,7 +38,7 @@ pageStandard params = do
                 ]
            ]
 
-entryTitle :: MacroParams -> MacroResult
+entryTitle :: Params -> MacroResult
 entryTitle params = do
     title <- lookupTitle params
     desc <- lookupDesc params
@@ -49,13 +49,13 @@ entryTitle params = do
             replaceText "%LINK%" link
            ]
 
--- pageTitle :: MacroParams -> MacroResult
--- pageTitle params = do
---     title <- lookupTitle params
---     desc <- lookupDesc params
---     entries <- lookupString "entries-file" params
---     return [add $ Snippet "resources/snippets/pageTitle.html",
---             replaceText "%TITLE%" title,
---             replaceText "%DESC%" desc,
---             replace "%ENTRIES%" $ add (MacroOnFile entryTitle entries)
---            ]
+pageTitle :: Params -> MacroResult
+pageTitle params = do
+    title <- lookupTitle params
+    desc <- lookupDesc params
+    entries <- lookupString "entries-file" params
+    return [add $ Snippet "resources/snippets/pageTitle.html",
+            replaceText "%TITLE%" title,
+            replaceText "%DESC%" desc,
+            replace "%ENTRIES%" $ add (MacroOnFile entryTitle entries)
+           ]

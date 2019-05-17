@@ -10,7 +10,7 @@ build-type:          Simple
 extra-source-files:  ChangeLog.md
 cabal-version:       >=1.10
 library
-  exposed-modules:     Hssb.Layout, Hssb.MacroTest, Hssb.Utilities
-  build-depends:       base >=4.9 && <4.10, yaml >=0.11 && <0.12, aeson >=1.2 && <1.3, directory >=1.3 && <1.4, text >=1.2 && <1.3, unordered-containers >=0.2 && <0.3, bytestring >=0.10 && <0.11, transformers >=0.5 && <0.6, mtl >=2.2 && <2.3, split >=0.2, filepath >= 1.4, vector >= 0.12
+  exposed-modules:     Hssb.Layout, Hssb.MacroTest, Hssb.Utilities, Hssb.Generator
+  build-depends:       base >=4.9 && <4.10, yaml >=0.11 && <0.12, aeson >=1.2 && <1.3, directory >=1.3 && <1.4, text >=1.2 && <1.3, unordered-containers >=0.2 && <0.3, bytestring >=0.10 && <0.11, transformers >=0.5 && <0.6, mtl >=2.2 && <2.3, split >=0.2, filepath >= 1.4, vector >= 0.12, hashable >= 1.2
   hs-source-dirs:      src
   default-language:    Haskell2010

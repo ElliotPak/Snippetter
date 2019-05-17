@@ -11,10 +11,12 @@ import qualified Data.Text.IO as TIO
 macroMap :: HashMap String Macro
 macroMap = fromList [("title-page", entryTitle)]
 
-displayDocResult :: DocResult IO SiteAction -> IO ()
+displayDocResult :: DocResult IO T.Text -> IO ()
 displayDocResult doc = do
     unwrapped <- runExceptT doc
     putStrLn $ show unwrapped
+
+executeBuildAction f mp = loadBuildAction f mp >>= executeSiteAction
 
 lookupTitle = lookupString "title"
 lookupName = lookupString "name"

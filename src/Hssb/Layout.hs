@@ -68,9 +68,7 @@ executeSiteAction _              = undefined
 
 executeLayoutFile :: MonadReadFile m =>
     FilePath -> HashMap String Macro -> DocResult m T.Text
-executeLayoutFile path map = do
-    action <- loadBuildAction path map
-    executeSiteAction action
+executeLayoutFile path map = loadBuildAction path map >>= executeSiteAction
 
 macroOnEntryFile :: MonadReadFile m => Macro -> FilePath -> DocResult m Doc
 macroOnEntryFile macro path = do
@@ -87,7 +85,7 @@ instance NeedsFiles MacroOnFile where
         entries <- macroOnEntryFile m f
         containing <- getNeededFiles entries
         return $ f : containing
--- instance Contentable MacroOnFile where
---     resolve (MacroOnFile m f) = do
---         doc <- executeEntryFile m f
---         return doc
+instance Contentable MacroOnFile where
+    resolve (MacroOnFile m f) = do
+        doc <- macroOnEntryFile m f
+        resolveContents doc T.empty

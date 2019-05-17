@@ -4,7 +4,6 @@ import Control.Monad.Trans.Except
 import Control.Monad.Except
 import Data.Aeson.Types (Object, Value (Object, String, Array))
 import Data.HashMap.Strict (HashMap, lookup)
-import Data.Vector
 import Data.Yaml ((.:))
 import Hssb.Layout.Types
 import Hssb.Utilities
@@ -55,15 +54,15 @@ loadBuildAction path map = do
     layout <- loadLayoutFile path
     liftEither $ layoutToAction map layout
 
-filesNeeded :: MonadReadFile m => Macro -> Value -> DocResult m [FilePath]
-filesNeeded m mp = (liftEither $ executeMacro m mp) >>= getNeededFiles
+filesNeeded :: MonadReadFile m => Macro -> MacroParams -> DocResult m [FilePath]
+filesNeeded m mp = (liftEither $ m mp) >>= getNeededFiles
 
 filesNeededForAction :: MonadReadFile m => SiteAction -> DocResult m [FilePath]
-filesNeededForAction (Build m mp f) = filesNeeded m (Object mp)
+filesNeededForAction (Build m mp f) = filesNeeded m mp
 
 executeSiteAction :: MonadReadFile m => SiteAction -> DocResult m T.Text
 executeSiteAction (Build m mp f) = do 
-    executed <- liftEither $ executeMacro m (Object mp)
+    executed <- liftEither $ m mp
     resolveContents executed T.empty
 executeSiteAction _              = undefined
 
@@ -73,18 +72,21 @@ executeLayoutFile path map = do
     action <- loadBuildAction path map
     executeSiteAction action
 
-executeMacro :: Macro -> Value -> MacroResult
-executeMacro macro (Object params) = macro params
-executeMacro macro (Array vec)     = do
-    let l = toList vec
-    mapped <- Prelude.mapM (executeMacro macro) l :: Either DocError [Doc]
-    return $ Prelude.concat mapped
-executeMacro _     _               = Left $ InvalidFileFormat ""
+macroOnEntryFile :: MonadReadFile m => Macro -> FilePath -> DocResult m Doc
+macroOnEntryFile macro path = do
+    values <- yamlIfExists path :: MonadReadFile m => DocResult m [MacroParams]
+    liftEither $ macroOnValues macro values
 
--- instance NeedsFiles MacroOnFile where
---     getNeededFiles (MacroOnFile m f) = do
---         containing <- determineNeededFiles m f
---         return $ f : containing
+macroOnValues :: Macro -> [MacroParams] -> Either DocError Doc
+macroOnValues m v = do
+    mapped <- mapM m v
+    return $ concat mapped
+
+instance NeedsFiles MacroOnFile where
+    getNeededFiles (MacroOnFile m f) = do
+        entries <- macroOnEntryFile m f
+        containing <- getNeededFiles entries
+        return $ f : containing
 -- instance Contentable MacroOnFile where
 --     resolve (MacroOnFile m f) = do
 --         doc <- executeEntryFile m f

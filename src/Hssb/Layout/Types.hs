@@ -1,7 +1,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE RecordWildCards #-}
 
 module Hssb.Layout.Types where
 
@@ -32,8 +31,7 @@ data MacroError =
     deriving (Show)
 
 data DocError =
-    AbsentKeyInFile String (Maybe FilePath) |
-    WrongKeyTypeInFile String (Maybe FilePath) |
+    MacroError MacroError (Maybe FilePath) |
     InvalidPath FilePath |
     NotYaml FilePath |
     InvalidFileFormat FilePath |
@@ -42,26 +40,27 @@ data DocError =
     deriving (Show)
 
 convertMacroError :: Maybe FilePath -> MacroError -> DocError
-convertMacroError path (AbsentKey s) = AbsentKeyInFile s path
-convertMacroError path (WrongKeyType s) = WrongKeyTypeInFile s path
+convertMacroError path err = MacroError err path
 
-data LayoutFile = LayoutFile {
-    input     :: Maybe FilePath,
-    output    :: FilePath,
-    macroName :: String,
-    contents  :: HashMap T.Text Value
-} deriving (Show)
+data PathedLayoutEntry = PathedLayoutEntry (Maybe FilePath) LayoutEntry
 
-addPath :: FilePath -> LayoutFile -> LayoutFile
-addPath p (LayoutFile _ o m c) = LayoutFile (Just p) o m c
+data LayoutEntry =
+    ExecMacro FilePath String Params |
+    ExecCopy FilePath FilePath
+    deriving (Show)
 
-instance Y.FromJSON LayoutFile where
+addPath :: FilePath -> LayoutEntry -> PathedLayoutEntry
+addPath path layout = PathedLayoutEntry (Just path) layout
+
+instance Y.FromJSON LayoutEntry where
     parseJSON = Y.withObject "LayoutFile" $ \o -> do
-        let input = Nothing
-        output <- o .: T.pack "output"
-        macroName <- o .: T.pack "macro-name"
-        contents <- o .: T.pack "values"
-        return $ LayoutFile {..}
+        kind <- o .: T.pack "type"
+        case (T.unpack kind) of
+          "macro" -> ExecMacro <$> o .: T.pack "output"
+                         <*> o .: T.pack "macro-name"
+                         <*> o .: T.pack "values"
+          "copy" -> ExecCopy <$> o .: T.pack "from"
+                         <*> o .: T.pack "to"
 
 instance Show Macro where
     show s = "MACRO"

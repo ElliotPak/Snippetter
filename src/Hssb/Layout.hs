@@ -38,35 +38,32 @@ yamlIfExists path = do
     contents <- contentsIfExists path
     liftEither $ mapLeft (\x -> NotYaml path) $ decodeYaml contents
 
-valueIfExists :: MonadReadFile m => FilePath -> DocResult m Value
-valueIfExists = yamlIfExists
-
-loadLayoutFile :: MonadReadFile m => FilePath -> DocResult m LayoutFile
+loadLayoutFile :: MonadReadFile m => FilePath -> DocResult m [PathedLayoutEntry]
 loadLayoutFile path = do
-    y <- yamlIfExists path :: MonadReadFile m => DocResult m LayoutFile
-    return $ addPath path y
+    y <- yamlIfExists path :: MonadReadFile m => DocResult m [LayoutEntry]
+    return $ map (addPath path) y
 
 layoutToAction ::
-    HashMap String Macro -> LayoutFile ->
-    Either DocError SiteAction
-layoutToAction map layout = do
-    let mp = MacroParams (contents layout) (input layout)
-    let f  = output layout
-    let mn = macroName layout
-    m <- lookupEither (MissingMacro mn) mn map
-    return $ Build m mp f
+    HashMap String Macro -> PathedLayoutEntry -> Either DocError SiteAction
+layoutToAction map (PathedLayoutEntry input layout) = ll path layout
+    where
+        ll path (ExecMacro output macroName contents) = do
+            let mp = MacroParams contents input
+            let err = MissingMacro macroName
+            macro <- lookupEither err macroName map
+            return $ Build macro mp output
+        ll path (ExecCopy from to) = return $ Copy from to
 
-loadBuildAction :: MonadReadFile m =>
-    FilePath -> HashMap String Macro -> DocResult m SiteAction
-loadBuildAction path map = do
+loadSiteActions :: MonadReadFile m =>
+    FilePath -> HashMap String Macro -> DocResult m [SiteAction]
+loadSiteActions path map = do
     layout <- loadLayoutFile path
-    liftEither $ layoutToAction map layout
+    liftEither $ mapM (layoutToAction map) layout
 
-filesNeeded :: MonadReadFile m => Macro -> MacroParams -> DocResult m [FilePath]
-filesNeeded m mp = (liftEither $ executeMacro m mp) >>= getNeededFiles
-
-filesNeededForAction :: MonadReadFile m => SiteAction -> DocResult m [FilePath]
-filesNeededForAction (Build m mp f) = filesNeeded m mp
+filesNeeded :: MonadReadFile m => SiteAction -> DocResult m [FilePath]
+filesNeeded (Build m mp f) =
+    (liftEither $ executeMacro m mp) >>= getNeededFiles
+filesNeeded (Copy from to) = return [to]
 
 executeSiteAction :: MonadReadFile m => SiteAction -> DocResult m T.Text
 executeSiteAction (Build m mp f) = do 
@@ -76,7 +73,10 @@ executeSiteAction _              = undefined
 
 executeLayoutFile :: MonadReadFile m =>
     FilePath -> HashMap String Macro -> DocResult m T.Text
-executeLayoutFile path map = loadBuildAction path map >>= executeSiteAction
+executeLayoutFile path macros = do
+    actions <- loadSiteActions path macros
+    texts <- mapM executeSiteAction actions
+    return $ T.concat texts
 
 macroOnEntryFile :: MonadReadFile m => Macro -> FilePath -> DocResult m Doc
 macroOnEntryFile macro path = do

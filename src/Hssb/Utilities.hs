@@ -56,10 +56,10 @@ replaceText :: String -> String -> Action
 replaceText t d = replace t $ asDoc $ T.pack d
 
 modSnippet :: FilePath -> (T.Text -> T.Text) -> Transform
-modSnippet path func = Transform (Content (Snippet path)) func
+modSnippet path func = Transform (Snippet path) func
 
 modSnippetError :: FilePath -> (T.Text -> Either DocError T.Text) -> TransformError
-modSnippetError path func = TransformError (Content (Snippet path)) func
+modSnippetError path func = TransformError (Snippet path) func
 
 relativePath :: FilePath -> FilePath -> FilePath
 relativePath from to = rel "" splitFrom splitTo

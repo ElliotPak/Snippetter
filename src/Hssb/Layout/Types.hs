@@ -20,6 +20,8 @@ type MacroResult = Either MacroError Doc
 type Params = HashMap T.Text Value
 type Macro = Params -> Either MacroError Doc
 type Doc = [Action]
+type TextFunc = T.Text -> T.Text
+type TextFuncError = T.Text -> Either DocError T.Text
 
 data MacroParams = MacroParams {
     params :: Params,
@@ -49,8 +51,8 @@ data LayoutEntry =
 
 data Snippet = Snippet FilePath
 data MacroOnFile = MacroOnFile Macro FilePath
-data Transform = Transform Content (T.Text -> T.Text)
-data TransformError = TransformError Content (T.Text -> Either DocError T.Text)
+data Transform = forall c. (Contentable c) => Transform c TextFunc
+data TransformError = forall c. (Contentable c) => TransformError c TextFuncError
 
 data Add = forall c. (Contentable c) => Add c
 data Replace = forall a. (Actionable a) => Replace T.Text a

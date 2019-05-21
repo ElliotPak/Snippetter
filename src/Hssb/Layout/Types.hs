@@ -4,6 +4,7 @@
 
 module Hssb.Layout.Types where
 
+import Control.Monad.Except
 import Control.Monad.Trans
 import Control.Monad.Trans.Except
 import Data.Aeson.Types (Object, Value (Object, String))
@@ -39,15 +40,26 @@ data DocError =
     MiscError String
     deriving (Show)
 
-convertMacroError :: Maybe FilePath -> MacroError -> DocError
-convertMacroError path err = MacroError err path
-
 data PathedLayoutEntry = PathedLayoutEntry (Maybe FilePath) LayoutEntry
 
 data LayoutEntry =
     ExecMacro FilePath String Params |
     ExecCopy FilePath FilePath
     deriving (Show)
+
+data Snippet = Snippet FilePath
+data MacroOnFile = MacroOnFile Macro FilePath
+data Transform = Transform Content (T.Text -> T.Text)
+data TransformError = TransformError Content (T.Text -> Either DocError T.Text)
+
+data Add = forall c. (Contentable c) => Add c
+data Replace = forall a. (Actionable a) => Replace T.Text a
+
+data Content = forall c. (Contentable c) => Content c
+data Action = forall a. (Actionable a) => Action a
+
+convertMacroError :: Maybe FilePath -> MacroError -> DocError
+convertMacroError path err = MacroError err path
 
 addPath :: FilePath -> LayoutEntry -> PathedLayoutEntry
 addPath path layout = PathedLayoutEntry (Just path) layout
@@ -87,6 +99,12 @@ instance NeedsFiles Content where
 instance NeedsFiles Snippet where
     getNeededFiles (Snippet s) = return [s]
 
+instance NeedsFiles Transform where
+    getNeededFiles (Transform c f) = getNeededFiles c
+
+instance NeedsFiles TransformError where
+    getNeededFiles (TransformError c f) = getNeededFiles c
+
 instance NeedsFiles Action where
     getNeededFiles (Action a) = getNeededFiles a
 
@@ -115,6 +133,16 @@ instance Contentable T.Text where
 instance Contentable Snippet where
     resolve (Snippet p) = getFileContents p
 
+instance Contentable Transform where
+    resolve (Transform c f) = do
+        sub <- resolve c
+        return $ f sub
+
+instance Contentable TransformError where
+    resolve (TransformError c f) = do
+        sub <- resolve c
+        liftEither $ f sub
+
 class NeedsFiles a => Actionable a where
     resolveContents :: MonadReadFile m => a -> T.Text -> DocResult m T.Text
 
@@ -136,12 +164,3 @@ instance Actionable Doc where
         head <- resolveContents x text
         resolveContents xs head
     resolveContents [] text = return text
-
-data Content = forall c. (Contentable c) => Content c
-data Action = forall a. (Actionable a) => Action a
-
-data Snippet = Snippet FilePath
-data MacroOnFile = MacroOnFile Macro FilePath
-
-data Add = forall c. (Contentable c) => Add c
-data Replace = forall a. (Actionable a) => Replace T.Text a

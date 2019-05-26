@@ -1,6 +1,8 @@
+-- | Contains a bunch of helper functions. Some are used throughout other parts
+--   of the library, and some are intended to be used when creating Macros.
+
 module Hssb.Utilities where
 
-import Hssb.Layout.Types
 import Data.Aeson.Types (Object, Value (Object, String))
 import Data.Hashable
 import Data.HashMap.Strict (HashMap, lookup)
@@ -9,69 +11,20 @@ import Prelude hiding (lookup)
 import System.FilePath
 import qualified Data.Text as T
 
+-- | Maps the Left value of an Either.
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f (Left x) = Left $ f x
 mapLeft _ (Right x) = Right x
 
+-- | Converts a Maybe to an Either.
 maybeToEither :: l -> Maybe r -> Either l r
 maybeToEither fail (Nothing) = Left fail
 maybeToEither _    (Just a)  = Right a
 
+-- | Looks up a key in a HashMap, returning the result if it finds something,
+--   and a default value if it doesn't.
 lookupEither :: (Eq k, Hashable k) => e -> k -> HashMap k v -> Either e v
 lookupEither def key value =
     case (lookup key value) of
       Nothing -> Left def
       Just a  -> Right a
-
-lookupParams :: (Value -> Maybe a) -> String -> Params -> Either MacroError a
-lookupParams get key map = do
-    thing <- lookupEither (AbsentKey key) keyT map
-    maybeToEither (WrongKeyType key) (get thing)
-    where keyT = T.pack key
-
-unString :: Value -> Maybe String
-unString (String s) = Just $ T.unpack s
-unString _          = Nothing
-
-unObject :: Value -> Maybe Params
-unObject (Object o) = Just o
-unObject _          = Nothing
-
-lookupString :: String -> Params -> Either MacroError String
-lookupString = lookupParams unString
-
-lookupObject :: String -> Params -> Either MacroError Params
-lookupObject = lookupParams unObject
-
-addString :: String -> Action
-addString s =  Action $ Add $ T.pack s
-
-add :: Contentable c => c -> Action
-add c = Action $ Add c
-
-replace :: Actionable a => String -> a -> Action
-replace t d = Action $ Replace (T.pack t) d
-
-replaceText :: String -> String -> Action
-replaceText t d = replace t $ asDoc $ T.pack d
-
-modSnippet :: FilePath -> (T.Text -> T.Text) -> Transform
-modSnippet path func = Transform (Snippet path) func
-
-modSnippetError :: FilePath -> (T.Text -> Either DocError T.Text) -> TransformError
-modSnippetError path func = TransformError (Snippet path) func
-
-relativePath :: FilePath -> FilePath -> FilePath
-relativePath from to = rel "" splitFrom splitTo
-    where
-        splitTo   = splitOn [pathSeparator] to
-        splitFrom = splitOn [pathSeparator] from
-        rel path []     []     = path
-        rel path (x:[]) []     = path
-        rel path (x:xs) []     = rel (".." </> path) xs []
-        rel path []     (y:ys) = rel (path </> y) [] ys
-        rel path (x:xs) (y:ys)
-          | path /= "" && xs /= [] = rel (".." </> path </> y) xs ys
-          | path /= "" && xs == [] = rel (path </> y) xs ys
-          | x == y                 = rel path xs ys
-          | otherwise              = rel (".." </> path </> y) xs ys

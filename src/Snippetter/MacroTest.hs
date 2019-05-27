@@ -1,10 +1,10 @@
-module Hssb.MacroTest where
+module Snippetter.MacroTest where
 
 import Control.Monad.Trans.Except
 import Data.HashMap.Strict (HashMap, lookup, fromList)
-import Hssb.Layout
-import Hssb.Utilities
-import Hssb.Helpers
+import Snippetter.Layout
+import Snippetter.Utilities
+import Snippetter.Helpers
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 

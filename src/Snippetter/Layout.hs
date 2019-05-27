@@ -5,9 +5,9 @@
 -- | Contains basically all information on how to convert layout files,
 --   entries, snippets and macros into the sum of these parts.
 
-module Hssb.Layout where
+module Snippetter.Layout where
 
-import Hssb.Utilities
+import Snippetter.Utilities
 import Control.Monad.Except
 import Control.Monad.Trans
 import Control.Monad.Trans.Except

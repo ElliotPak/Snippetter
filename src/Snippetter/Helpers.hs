@@ -1,10 +1,10 @@
 -- | Contains a bunch of helper functions, intended to be used when creating
 --   Macros.
 
-module Hssb.Helpers where
+module Snippetter.Helpers where
 
-import Hssb.Layout
-import Hssb.Utilities
+import Snippetter.Layout
+import Snippetter.Utilities
 import Data.Aeson.Types (Object, Value (Object, String))
 import Data.Hashable
 import Data.HashMap.Strict (HashMap, lookup)

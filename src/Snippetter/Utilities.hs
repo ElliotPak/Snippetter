@@ -1,7 +1,7 @@
 -- | Contains a bunch of helper functions. Some are used throughout other parts
 --   of the library, and some are intended to be used when creating Macros.
 
-module Hssb.Utilities where
+module Snippetter.Utilities where
 
 import Data.Aeson.Types (Object, Value (Object, String))
 import Data.Hashable

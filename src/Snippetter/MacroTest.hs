@@ -3,7 +3,6 @@ module Snippetter.MacroTest where
 import Control.Monad.Trans.Except
 import Data.HashMap.Strict (HashMap, lookup, fromList)
 import Snippetter.Layout
-import Snippetter.Utilities
 import Snippetter.Helpers
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO

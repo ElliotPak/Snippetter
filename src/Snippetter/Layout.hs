@@ -302,26 +302,13 @@ filesNeeded (Build m mp f) =
     (liftEither $ executeMacro m mp) >>= getNeededFiles
 filesNeeded (Copy from to) = return [to]
 
--- | (TEMPORARY)
---
 --   Evaluate a site action and convert its result to text.
---   Currently only defined for Build.
---
---   Will eventually actually execute things (essentially will be of type IO
---   ()) instead of just evaluating to text.
-executeSiteAction :: MonadReadFile m => SiteAction -> DocResult m T.Text
-executeSiteAction (Build m mp f) = do 
+--   Only defined for Build.
+evaluateBuildAction :: MonadReadFile m => SiteAction -> DocResult m T.Text
+evaluateBuildAction (Build m mp f) = do 
     executed <- liftEither $ executeMacro m mp
     resolveContents executed T.empty
-executeSiteAction _              = undefined
-
--- | Execute all SiteActions in a layout file.
-executeLayoutFile :: MonadReadFile m =>
-    FilePath -> HashMap String Macro -> DocResult m T.Text
-executeLayoutFile path macros = do
-    actions <- loadSiteActions path macros
-    texts <- mapM executeSiteAction actions
-    return $ T.concat texts
+evaluateBuildAction _              = undefined
 
 -- | Create a Doc by running a Macro, using the values of a YAML collection as
 --   its parameters.
@@ -333,7 +320,7 @@ macroOnEntryFile macro path = do
     liftEither $ macroOnValues macro mp
 
 -- | Create a Doc by running a Macro consecutively, using each entry in the
---   PathedParams list as params.
+--   PathedParams list as parameters.
 macroOnValues :: Macro -> [PathedParams] -> Either DocError Doc
 macroOnValues m v = do
     mapped <- mapM (executeMacro m) v

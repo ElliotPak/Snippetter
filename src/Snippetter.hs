@@ -15,7 +15,7 @@ executeSiteAction a@(Build m mp f) = do
 executeSiteAction _                = undefined
 
 
-executeLayoutFile :: FilePath -> HashMap String Macro -> IO ()
+executeLayoutFile :: FilePath -> HashMap T.Text Macro -> IO ()
 executeLayoutFile path map = do
     executed <- runExceptT $ loadSiteActions path map
     case executed of

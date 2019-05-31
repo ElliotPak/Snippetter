@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Snippetter.MacroTest where
 
 import Control.Monad.Trans.Except
@@ -7,7 +9,7 @@ import Snippetter.Helpers
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 
-macroMap :: HashMap String Macro
+macroMap :: HashMap T.Text Macro
 macroMap = fromList [("title-page", pageTitle)]
 
 displayDocResult :: DocResult IO T.Text -> IO ()
@@ -15,10 +17,10 @@ displayDocResult doc = do
     unwrapped <- runExceptT doc
     putStrLn $ show unwrapped
 
-lookupTitle = lookupString "title"
-lookupName = lookupString "name"
-lookupDesc = lookupString "desc"
-lookupLink = lookupString "link"
+lookupTitle = lookupText "title"
+lookupName = lookupText "name"
+lookupDesc = lookupText "desc"
+lookupLink = lookupText "link"
 
 pageStandard :: Params -> MacroResult
 pageStandard params = do
@@ -31,7 +33,7 @@ pageStandard params = do
                  add $ Snippet "resources/snippets/paragraph.html",
                  replaceText "%TITLE%" title,
                  replaceText "%DESC%" desc,
-                 addString "%ENTRIES%"
+                 addText "%ENTRIES%"
                 ]
            ]
 
@@ -50,9 +52,9 @@ pageTitle :: Params -> MacroResult
 pageTitle params = do
     title <- lookupTitle params
     desc <- lookupDesc params
-    entries <- lookupString "entries-file" params
+    entries <- lookupText "entries-file" params
     return [add $ Snippet "resources/snippets/pageTitle.html",
             replaceText "%TITLE%" title,
             replaceText "%DESC%" desc,
-            replace "%ENTRIES%" $ add (MacroOnFile entryTitle entries)
+            replace "%ENTRIES%" $ add (MacroOnFile entryTitle $ T.unpack entries)
            ]

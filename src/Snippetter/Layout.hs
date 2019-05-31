@@ -90,9 +90,9 @@ data PathedParams = PathedParams {
 
 -- | Things that can go wrong while a macro is being run.
 data MacroError =
-    AbsentKey String |
-    WrongKeyType String |
-    MiscMacroError String
+    AbsentKey T.Text |
+    WrongKeyType T.Text |
+    MiscMacroError T.Text
     deriving (Show)
 
 -- | Things that can go wrong while a page is being built.
@@ -101,13 +101,13 @@ data DocError =
     InvalidPath FilePath |
     NotYaml FilePath |
     InvalidFileFormat FilePath |
-    MissingMacro String |
-    MiscError String
+    MissingMacro T.Text |
+    MiscError T.Text
     deriving (Show)
 
 -- | Site actions as immediately loaded from a YAML file.
 data Layout =
-    LayoutBuild FilePath String Params |
+    LayoutBuild FilePath T.Text Params |
     LayoutCopy FilePath FilePath
     deriving (Show)
 
@@ -278,7 +278,7 @@ loadLayoutFile path = do
 -- | Converts a PathedLayout to a SiteAction, when given a mapping of strings
 --   to macros.
 layoutToAction ::
-    HashMap String Macro -> PathedLayout -> Either DocError SiteAction
+    HashMap T.Text Macro -> PathedLayout -> Either DocError SiteAction
 layoutToAction map (PathedLayout layout input) = ll input layout
     where
         ll path (LayoutBuild output macroName contents) = do
@@ -291,7 +291,7 @@ layoutToAction map (PathedLayout layout input) = ll input layout
 -- | Loads a list of SiteActions from a file, when given a mapping of strings
 --   to macros
 loadSiteActions :: MonadReadFile m =>
-    FilePath -> HashMap String Macro -> DocResult m [SiteAction]
+    FilePath -> HashMap T.Text Macro -> DocResult m [SiteAction]
 loadSiteActions path map = do
     layout <- loadLayoutFile path
     liftEither $ mapM (layoutToAction map) layout

@@ -4,7 +4,17 @@ Snippetter, to be honest, is quite complex, but is also quite extensive and
 capable of complicated stuff. This document aims to explain how Snippetter
 works and how to use it for your own projects.
 
-## Content
+## Quick Start
+
+- Create a macro (see [Macros](#macros))
+- Create a layout file (see [Layout Files](#layout-files))
+- In your main Haskell file, create a `HashMap Text Macro`.
+- Import `Snippetter` and run `executeLayoutFile path map`, where `path` is the path to the layout file, and `map` is the `HashMap`.
+- The webpage will be saved to the output file specified in your layout file.
+
+## How it all works
+
+### Content
 
 "Content" represents operations that evaluate to text. In order to make a new datatype that acts as content, it must be an instance of `Contentable` (in `Snippetter.Layout`).
 
@@ -20,7 +30,7 @@ Built in `Contentable` types include:
   the content that it contains. The function must have the type `Text -> Either
   DocError Text`.
 
-## Actions
+### Actions
 
 `Action`s represent operations that, when given text, modify it in some way. In
 order to make a new datatype that acts as content, it must be an instance of
@@ -36,7 +46,7 @@ Built in `Actionable` types include:
 - `Action`, which executes the action it contains.
 - `[Action]`, which executes all actions in the list sequentially.
 
-## The NeedsFiles class
+### The NeedsFiles class
 
 While not currently used, Snippetter can determine what files are needed to
 build a webpage. This is done via the `NeedsFiles` class. The `Contentable` and
@@ -45,7 +55,7 @@ for this reason, although the default implementation returns an empty list.
 `Actionable` instances should delegate to the content they contains, and
 `Contentable` instances should be decided on a case-by-case basis.
 
-## Macros
+### Macros
 
 A *macro* outlines the process of generating a file. Macros are (currently)
 defined within Haskell, and look like this:
@@ -70,12 +80,12 @@ The `Params` of a macro are an Aeson object, and its  values can be retrieved
 as a specific type (with error handling) with the helper functions in
 `Snippetter.Helpers`.
 
-## Parameter Files
+### Parameter Files
 
 *Parameter files* are YAML files containing a list of objects. They are
 intended to be used with certain types of content, such as `MacroOnFile`.
 
-## Layout Files
+### Layout Files
 
 *Layout files* are YAML files that detail actions that Snippetter should
 execute. While they can specify files to be copied or moved, it primarily

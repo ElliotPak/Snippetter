@@ -30,4 +30,3 @@ The next things to be added are, in no particular order:
 - Theming
 - Separate build folders
 - Moving files and shell command execution as site actions
-- Optional parameters

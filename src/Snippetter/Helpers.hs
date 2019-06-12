@@ -23,23 +23,39 @@ lookupParams get key map = do
     maybeToEither (WrongKeyType key) (get thing)
     where keyT = key
 
+-- | lookupParams with a default parameter. If any error occurs, the default
+--   value is the result instead.
+lookupDefault :: (Value -> Maybe a) -> a -> T.Text -> Params -> a
+lookupDefault un def text params =
+    case (lookupParams un text params) of
+      Left l  -> def
+      Right r -> r
+
 -- | Unpack Text from an Aeson Value.
-unString :: Value -> Maybe T.Text
-unString (String s) = Just s
-unString _          = Nothing
+unText :: Value -> Maybe T.Text
+unText (String s) = Just s
+unText _          = Nothing
 
 -- | Unpack an Object from an Aeson Value.
 unObject :: Value -> Maybe Params
 unObject (Object o) = Just o
 unObject _          = Nothing
 
--- | Shorthand for @lookupParams unString@.
+-- | Shorthand for @lookupParams unText@.
 lookupText :: T.Text -> Params -> Either MacroError T.Text
-lookupText = lookupParams unString
+lookupText = lookupParams unText
 
 -- | Shorthand for @lookupParams unObject@.
 lookupObject :: T.Text -> Params -> Either MacroError Params
 lookupObject = lookupParams unObject
+
+-- | Shorthand for @lookupDefault unObject@.
+lookupObjectDefault :: Params -> T.Text -> Params -> Params
+lookupObjectDefault = lookupDefault unObject
+
+-- | Shorthand for @lookupDefault unText@.
+lookupTextDefault :: T.Text -> T.Text -> Params -> T.Text
+lookupTextDefault = lookupDefault unText
 
 -- | Helper function for making an Action that adds a Text.
 addText :: T.Text -> Action

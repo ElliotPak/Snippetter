@@ -7,7 +7,7 @@ author:              Elliot Pak
 maintainer:          elliot@elliotpak.com
 category:            Web
 build-type:          Simple
-extra-source-files:  ChangeLog.md
+extra-source-files:  README.md
 cabal-version:       >=1.10
 library
   exposed-modules:     Snippetter, Snippetter.MacroTest

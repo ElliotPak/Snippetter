@@ -7,11 +7,11 @@ import Snippetter.Layout
 import Snippetter.Utilities
 import Data.Aeson.Types (Object, Value (Object, String))
 import Data.Hashable
-import Data.HashMap.Strict (HashMap, lookup)
 import Data.List.Split
 import Prelude hiding (lookup)
 import System.FilePath
 import qualified Data.Text as T
+import qualified Data.HashMap.Strict as H
 
 -- | Looks up a parameter and, if found, converts it to a type via the provided
 --   function.
@@ -69,6 +69,11 @@ add c = Action $ Add c
 --   Content.
 replace :: Actionable a => T.Text -> a -> Action
 replace t d = Action $ Replace t d
+
+-- | Helper function to apply a macro solely across a file with no default
+--   parameters.
+macroOnFile :: Macro -> FilePath -> SubMacro
+macroOnFile m f = SubMacro m H.empty [] f
 
 -- | Helper function for making an Action that replaces some Text with
 --   another Text.

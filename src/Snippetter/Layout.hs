@@ -146,20 +146,22 @@ instance NeedsFiles Snippet where
 instance Contentable Snippet where
     resolve (Snippet p) = getFileContents p
 
--- | Represents using a macro with a files contents.  
+-- | Represents using a macro on a set of parameters. These parameters can be
+-- provided in Haskell code, or from reading for a file, and also has default
+-- parameters associated with it.
 -- This content is resolved by loading the YAML file at the specified path, and
 -- running the macro multiple times, with each entry as its parameters.
-data MacroOnFile = MacroOnFile Macro FilePath
+data SubMacro = SubMacro Macro Params [Params] FilePath
 
-instance NeedsFiles MacroOnFile where
-    getNeededFiles (MacroOnFile m f) = do
-        entries <- macroOnEntryFile m f
+instance NeedsFiles SubMacro where
+    getNeededFiles (SubMacro m def list file) = do
+        entries <- macroOnEntryFile m file
         containing <- getNeededFiles entries
-        return $ f : containing
+        return $ file : containing
 
-instance Contentable MacroOnFile where
-    resolve (MacroOnFile m f) = do
-        doc <- macroOnEntryFile m f
+instance Contentable SubMacro where
+    resolve (SubMacro m def list file) = do
+        doc <- macroOnEntryFile m file
         resolveContents doc T.empty
 
 -- | Represents a transformation of other content.

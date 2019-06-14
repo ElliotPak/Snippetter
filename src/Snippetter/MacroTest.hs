@@ -56,5 +56,5 @@ pageTitle params = do
     return [add $ Snippet "resources/snippets/pageTitle.html",
             replaceText "%TITLE%" title,
             replaceText "%DESC%" desc,
-            replace "%ENTRIES%" $ add (MacroOnFile entryTitle $ T.unpack entries)
+            replace "%ENTRIES%" $ add (macroOnFile entryTitle $ T.unpack entries)
            ]

@@ -4,13 +4,16 @@ module Snippetter.MacroTest where
 
 import Control.Monad.Trans.Except
 import Data.HashMap.Strict (HashMap, lookup, fromList)
-import Snippetter.Layout
+import Snippetter.LayoutBase
+import Snippetter.LayoutTypes
 import Snippetter.Helpers
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 
 macroMap :: HashMap T.Text Macro
-macroMap = fromList [("title-page", pageTitle)]
+macroMap = fromList [ ("title-page", pageTitle),
+                      ("title-entry", entryTitle)
+                    ]
 
 displayDocResult :: DocResult IO T.Text -> IO ()
 displayDocResult doc = do

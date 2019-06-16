@@ -1,7 +1,7 @@
 module Snippetter where
 
 import Control.Monad.Trans.Except
-import Snippetter.Layout
+import Snippetter.LayoutBase
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Data.HashMap.Strict

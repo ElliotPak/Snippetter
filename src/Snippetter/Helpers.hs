@@ -3,7 +3,8 @@
 
 module Snippetter.Helpers where
 
-import Snippetter.Layout
+import Snippetter.LayoutBase
+import Snippetter.LayoutTypes
 import Snippetter.Utilities
 import Data.Aeson.Types (Object, Value (Object, String))
 import Data.Hashable

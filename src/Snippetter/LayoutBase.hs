@@ -2,10 +2,11 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 
--- | Contains basically all information on how to convert layout files,
---   entries, snippets and macros into the sum of these parts.
+-- | Contains information on how to convert layout files, entries, snippets and
+--   macros into the sum of these parts. @Snippetter.LayoutTypes@ contains the
+--   types that actually use this.
 
-module Snippetter.Layout where
+module Snippetter.LayoutBase where
 
 import Snippetter.Utilities
 import Control.Monad.Except
@@ -41,6 +42,29 @@ instance Contentable T.Text where
 class NeedsFiles a => Actionable a where
     resolveContents :: MonadReadFile m => a -> T.Text -> DocResult m T.Text
 
+-- | An existential type that holds any action.
+data Action = forall a. (Actionable a) => Action a
+
+instance NeedsFiles Action where
+    getNeededFiles (Action a) = getNeededFiles a
+
+instance Actionable Action where
+    resolveContents (Action a) = resolveContents a
+
+-- | Shorthand for a list of Actions.
+type Doc = [Action]
+
+instance NeedsFiles Doc where
+    getNeededFiles doc = do
+        mapped <- mapM getNeededFiles doc
+        return $ concat mapped
+
+instance Actionable Doc where
+    resolveContents (x:xs) text = do
+        head <- resolveContents x text
+        resolveContents xs head
+    resolveContents [] text = return text
+
 -- | The @MonadReadFile@ class is used to represent monads that can read files.
 --   It can also be used for mocking purposes.
 class Monad m => MonadReadFile m where
@@ -73,12 +97,6 @@ type Macro = Params -> MacroResult
 
 instance Show Macro where
     show s = "MACRO"
-
--- | Shorthand for a function that transforms text.
-type TextFunc = T.Text -> T.Text
-
--- | Shorthand for a function that transforms text and can fail.
-type TextFuncError = T.Text -> Either DocError T.Text
 
 -- | A Params value that may have a file path associated with it.
 --   If loaded from a file, the path should be assigned when doing so.
@@ -134,110 +152,6 @@ data SiteAction =
     Build Macro PathedParams FilePath |
     Copy FilePath FilePath
     deriving (Show)
-
--- | Represents a file to be loaded.  
--- This content is resolved by inserting the contents of the file at the
--- specified path.
-data Snippet = Snippet FilePath
-
-instance NeedsFiles Snippet where
-    getNeededFiles (Snippet s) = return [s]
-
-instance Contentable Snippet where
-    resolve (Snippet p) = getFileContents p
-
--- | Represents using a macro on a set of parameters. These parameters can be
--- provided in Haskell code, or from reading for a file, and also has default
--- parameters associated with it.
--- This content is resolved by loading the YAML file at the specified path, and
--- running the macro multiple times, with each entry as its parameters.
-data SubMacro = SubMacro Macro Params [Params] FilePath
-
-instance NeedsFiles SubMacro where
-    getNeededFiles (SubMacro m def list file) = do
-        entries <- macroOnEntryFile m file
-        containing <- getNeededFiles entries
-        return $ file : containing
-
-instance Contentable SubMacro where
-    resolve (SubMacro m def list file) = do
-        doc <- macroOnEntryFile m file
-        resolveContents doc T.empty
-
--- | Represents a transformation of other content.
--- This content is resolved by resolving its child and applying its function to
--- them.
-data Transform = forall c. (Contentable c) => Transform c TextFunc
-
-instance NeedsFiles Transform where
-    getNeededFiles (Transform c f) = getNeededFiles c
-
-instance Contentable Transform where
-    resolve (Transform c f) = do
-        sub <- resolve c
-        return $ f sub
-
--- | Represents a transformation of other content that can fail.
--- This content is resolved by resolving its child and applying its function to
--- them.
-data TransformError = forall c. (Contentable c) => TransformError c TextFuncError
-
-instance NeedsFiles TransformError where
-    getNeededFiles (TransformError c f) = getNeededFiles c
-
-instance Contentable TransformError where
-    resolve (TransformError c f) = do
-        sub <- resolve c
-        liftEither $ f sub
-
--- | An action that appends content.
--- Once its content is resolved, it will append its text to the other text
--- passed in.
-data Add = forall c. (Contentable c) => Add c
-
-instance NeedsFiles Add where
-    getNeededFiles (Add a) = getNeededFiles a
-
-instance Actionable Add where
-    resolveContents (Add a) t = do
-        aa <- resolve a
-        return $ T.concat [aa, t]
-
--- | An action that replaces text.
--- Once its content is resolved, it will replace the supplied text with the
--- resolved content.
-data Replace = forall a. (Actionable a) => Replace T.Text a
-
-instance NeedsFiles Replace where
-    getNeededFiles (Replace t d) = getNeededFiles d
-
-instance Actionable Replace where
-    resolveContents (Replace t d) text = do
-        dd <- resolveContents d T.empty
-        return $ T.replace t dd text
-
--- | An existential type that holds any action.
-data Action = forall a. (Actionable a) => Action a
-
-instance NeedsFiles Action where
-    getNeededFiles (Action a) = getNeededFiles a
-
-instance Actionable Action where
-    resolveContents (Action a) = resolveContents a
-
--- | Shorthand for a list of Actions.
-type Doc = [Action]
-
-instance NeedsFiles Doc where
-    getNeededFiles doc = do
-        mapped <- mapM getNeededFiles doc
-        return $ concat mapped
-
-instance Actionable Doc where
-    resolveContents (x:xs) text = do
-        head <- resolveContents x text
-        resolveContents xs head
-    resolveContents [] text = return text
 
 -- | Converts a MacroError to a DocError.
 convertMacroError :: Maybe FilePath -> MacroError -> DocError

@@ -11,6 +11,7 @@ extra-source-files:  README.md
 cabal-version:       >=1.10
 library
   exposed-modules:     Snippetter, Snippetter.MacroTest
+  other-modules:       Snippetter.LayoutBase, Snippetter.LayoutTypes, Snippetter.Helpers, Snippetter.Utilities
   build-depends:       base >=4.12 && <4.13, yaml >=0.11 && <0.12, aeson >=1.4 && <1.5, directory >=1.3 && <1.4, text >=1.2 && <1.3, unordered-containers >=0.2 && <0.3, bytestring >=0.10 && <0.11, transformers >=0.5 && <0.6, mtl >=2.2 && <2.3, split >=0.2, filepath >= 1.4, vector >= 0.12, hashable >= 1.2
   hs-source-dirs:      src
   default-language:    Haskell2010

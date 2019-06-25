@@ -1,6 +1,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 -- | Contains information on how to convert layout files, entries, snippets and
 --   macros into the sum of these parts. @Snippetter.LayoutTypes@ contains the
@@ -29,17 +30,35 @@ class NeedsFiles n where
 
 instance NeedsFiles T.Text
 
+-- | The @Previewable@ class is used as an advanced "show". In addition to
+--   showing a datatype's values it also supports a "dry run", which reads
+--   files in order to determine what macros etc. will actually be evaluated,
+--   instead of just showing values.
+class Previewable p where
+    preview       :: Int -> p -> T.Text
+    previewDryRun :: MonadReadFile m => Int -> p -> DocResult m T.Text
+    previewDryRun indent pv = return $ preview indent pv
+
+instance Previewable T.Text where
+    preview indent text = indentFour indent text
+
+instance Previewable p => Previewable [p] where
+    preview indent = T.intercalate "\n" . map (preview (indent + 1))
+    previewDryRun indent list = do
+        mapped <- mapM (previewDryRun (indent + 1)) list
+        return $ T.intercalate "\n" mapped
+
 -- | The @Contentable@ class is used to represent operations that evaluate to
 --   text.
-class NeedsFiles c => Contentable c where
-    resolve        :: MonadReadFile m => c -> DocResult m T.Text
+class (NeedsFiles c, Previewable c) => Contentable c where
+    resolve    :: MonadReadFile m => c -> DocResult m T.Text
 
 instance Contentable T.Text where
     resolve s = return s
 
 -- | The @Actionable@ class is used to represent operations that combine text
 --   in some way.
-class NeedsFiles a => Actionable a where
+class (NeedsFiles a, Previewable a) => Actionable a where
     resolveContents :: MonadReadFile m => a -> T.Text -> DocResult m T.Text
 
 -- | An existential type that holds any action.
@@ -47,6 +66,10 @@ data Action = forall a. (Actionable a) => Action a
 
 instance NeedsFiles Action where
     getNeededFiles (Action a) = getNeededFiles a
+
+instance Previewable Action where
+    preview indent (Action a)       = preview indent a
+    previewDryRun indent (Action a) = previewDryRun indent a
 
 instance Actionable Action where
     resolveContents (Action a) = resolveContents a

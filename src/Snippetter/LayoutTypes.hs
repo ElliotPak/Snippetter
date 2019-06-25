@@ -1,19 +1,32 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Snippetter.LayoutTypes where
 
 import Snippetter.LayoutBase
+import Snippetter.Utilities
 import Control.Monad.Except
 import Control.Monad.Trans.Except
 import qualified Data.Yaml as Y
 import qualified Data.Text as T
+import qualified Data.HashMap.Strict as H
+import qualified Data.ByteString.Char8 as B
 
 -- | Represents a file to be loaded.  
 -- This content is resolved by inserting the contents of the file at the
 -- specified path.
 data Snippet = Snippet FilePath
+
+instance Previewable Snippet where
+    preview indent (Snippet s) =
+        indentFour indent $ "Snippet: \"" <> (T.pack s) <> "\""
+    previewDryRun indent (Snippet s) = do
+        contents <- getFileContents s
+        let nameSegment = "Snippet: \"" <> (T.pack s) <> "\" with the contents:"
+        return $ indentFour indent nameSegment
+            <> indentFour (indent + 1) contents
 
 instance NeedsFiles Snippet where
     getNeededFiles (Snippet s) = return [s]
@@ -34,6 +47,29 @@ instance NeedsFiles SubMacro where
         containing <- getNeededFiles entries
         return $ file : containing
 
+instance Previewable SubMacro where
+    preview indent (SubMacro m def list file) = indentFour indent complete
+        where encodeT :: Params -> T.Text
+              encodeT hashmap
+                | H.null hashmap = ""
+                | otherwise      = (T.pack . B.unpack . Y.encode) hashmap
+              params = filter (\a -> a /= "") . (map encodeT)
+              ind = indentFour (indent + 1)
+              indd = indentFour (indent + 2)
+              tDefaults
+                | encodeT def == "" = ""
+                | otherwise =
+                    ind "\nDefault values:\n" <> indd (encodeT def)
+              tParams
+                | null (params list) = ""
+                | otherwise = 
+                    ind "\nExecution with these parameters:\n"
+                        <> indd (T.unlines $ params list)
+              tFile = ind "\nExecution on this file:\n" <> indd (T.pack file)
+              complete = "Macro execution with the following:"
+                  <> tDefaults <> tParams <> tFile
+    previewDryRun indent (SubMacro m def list file) = undefined
+
 instance Contentable SubMacro where
     resolve (SubMacro m def list file) = do
         doc <- macroOnEntryFile m file
@@ -53,6 +89,13 @@ data Transform = forall c. (Contentable c) => Transform c TextFunc
 instance NeedsFiles Transform where
     getNeededFiles (Transform c f) = getNeededFiles c
 
+instance Previewable Transform where
+    preview indent (Transform c f) =
+        indentFour indent "Transformation of:\n" <> preview (indent + 1) c
+    previewDryRun indent (Transform c f) = do
+        dryRun <- previewDryRun (indent + 1) c
+        return $ indentFour indent "Transformation of:\n" <> dryRun
+
 instance Contentable Transform where
     resolve (Transform c f) = do
         sub <- resolve c
@@ -65,6 +108,13 @@ data TransformError = forall c. (Contentable c) => TransformError c TextFuncErro
 
 instance NeedsFiles TransformError where
     getNeededFiles (TransformError c f) = getNeededFiles c
+
+instance Previewable TransformError where
+    preview indent (TransformError c f) =
+        indentFour indent "Transformation of:\n" <> preview (indent + 1) c
+    previewDryRun indent (TransformError c f) = do
+        dryRun <- previewDryRun (indent + 1) c
+        return $ indentFour indent "Transformation of:\n" <> dryRun
 
 instance Contentable TransformError where
     resolve (TransformError c f) = do
@@ -79,6 +129,13 @@ data Add = forall c. (Contentable c) => Add c
 instance NeedsFiles Add where
     getNeededFiles (Add a) = getNeededFiles a
 
+instance Previewable Add where
+    preview indent (Add a) =
+        indentFour indent "Add:\n" <> preview (indent + 1) a
+    previewDryRun indent (Add a) = do
+        dryRun <- previewDryRun (indent + 1) a
+        return $ indentFour indent "Add:\n" <> dryRun
+
 instance Actionable Add where
     resolveContents (Add a) t = do
         aa <- resolve a
@@ -91,6 +148,13 @@ data Replace = forall a. (Actionable a) => Replace T.Text a
 
 instance NeedsFiles Replace where
     getNeededFiles (Replace t d) = getNeededFiles d
+
+instance Previewable Replace where
+    preview indent (Replace t d) =
+        indentFour indent "Replace \"" <> t <> "\" with:\n" <> preview (indent + 1) d
+    previewDryRun indent (Replace t d) = do
+        dryRun <- previewDryRun (indent + 1) d
+        return $ indentFour indent "Replace \"" <> t <> "\" with:\n" <> dryRun
 
 instance Actionable Replace where
     resolveContents (Replace t d) text = do

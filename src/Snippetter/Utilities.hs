@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 -- | Contains a bunch of helper functions. Some are used throughout other parts
 --   of the library, and some are intended to be used when creating Macros.
 
@@ -28,3 +30,11 @@ lookupEither def key value =
     case (lookup key value) of
       Nothing -> Left def
       Just a  -> Right a
+
+-- | Indent a Text by a specified amount of spaces.
+indentText :: Int -> T.Text -> T.Text
+indentText ind = T.unlines . map ((<>) $ T.replicate ind " ") . T.lines
+
+-- | Indent Text by 4 spaces per indentation level.
+indentFour :: Int -> T.Text -> T.Text
+indentFour ind = indentText (4 * ind)

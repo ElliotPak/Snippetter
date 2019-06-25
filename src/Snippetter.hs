@@ -14,7 +14,6 @@ executeSiteAction a@(Build m mp f) = do
       Right r -> TIO.writeFile f r >> (putStrLn $ "Successfully created " ++ f)
 executeSiteAction _                = undefined
 
-
 executeLayoutFile :: FilePath -> HashMap T.Text Macro -> IO ()
 executeLayoutFile path map = do
     executed <- runExceptT $ loadSiteActions path map

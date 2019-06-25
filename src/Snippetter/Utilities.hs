@@ -33,8 +33,18 @@ lookupEither def key value =
 
 -- | Indent a Text by a specified amount of spaces.
 indentText :: Int -> T.Text -> T.Text
-indentText ind = T.unlines . map ((<>) $ T.replicate ind " ") . T.lines
+indentText ind = (T.intercalate "\n") . map ((<>) $ T.replicate ind " ") . T.lines
 
 -- | Indent Text by 4 spaces per indentation level.
 indentFour :: Int -> T.Text -> T.Text
 indentFour ind = indentText (4 * ind)
+
+-- | Add text on a newline if it's more than one line, or add it to the text
+--   otherwise.
+addSingleLineText :: T.Text -> T.Text -> T.Text
+addSingleLineText base single
+  | T.count "\n" single == 0 = base <> (T.stripStart single)
+  | otherwise                = base <> "\n" <> single
+
+-- | Infix operator for addSingleLineText.
+a <\> b = addSingleLineText a b

@@ -21,10 +21,10 @@ data Snippet = Snippet FilePath
 
 instance Previewable Snippet where
     preview indent (Snippet s) =
-        indentFour indent $ "Snippet: \"" <> (T.pack s) <> "\""
+        indentFour indent $ "Snippet named \"" <> (T.pack s) <> "\""
     previewDryRun indent (Snippet s) = do
         contents <- getFileContents s
-        let nameSegment = "Snippet: \"" <> (T.pack s) <> "\" with the contents:"
+        let nameSegment = "Snippet named \"" <> (T.pack s) <> "\" with the contents:"
         return $ indentFour indent nameSegment
             <> indentFour (indent + 1) contents
 
@@ -47,6 +47,7 @@ instance NeedsFiles SubMacro where
         containing <- getNeededFiles entries
         return $ file : containing
 
+-- | TODO: rewrite this once the SubMacro rework is done
 instance Previewable SubMacro where
     preview indent (SubMacro m def list file) = indentFour indent complete
         where encodeT :: Params -> T.Text
@@ -68,7 +69,7 @@ instance Previewable SubMacro where
               tFile = ind "\nExecution on this file:\n" <> indd (T.pack file)
               complete = "Macro execution with the following:"
                   <> tDefaults <> tParams <> tFile
-    previewDryRun indent (SubMacro m def list file) = undefined
+    previewDryRun indent (SubMacro m def list file) = return ""
 
 instance Contentable SubMacro where
     resolve (SubMacro m def list file) = do
@@ -91,10 +92,10 @@ instance NeedsFiles Transform where
 
 instance Previewable Transform where
     preview indent (Transform c f) =
-        indentFour indent "Transformation of:\n" <> preview (indent + 1) c
+        indentFour indent "Transformation of: " <\> preview (indent + 1) c
     previewDryRun indent (Transform c f) = do
         dryRun <- previewDryRun (indent + 1) c
-        return $ indentFour indent "Transformation of:\n" <> dryRun
+        return $ indentFour indent "Transformation of: " <\> dryRun
 
 instance Contentable Transform where
     resolve (Transform c f) = do
@@ -111,10 +112,10 @@ instance NeedsFiles TransformError where
 
 instance Previewable TransformError where
     preview indent (TransformError c f) =
-        indentFour indent "Transformation of:\n" <> preview (indent + 1) c
+        indentFour indent "Transformation of: " <\> preview (indent + 1) c
     previewDryRun indent (TransformError c f) = do
         dryRun <- previewDryRun (indent + 1) c
-        return $ indentFour indent "Transformation of:\n" <> dryRun
+        return $ indentFour indent "Transformation of: " <\> dryRun
 
 instance Contentable TransformError where
     resolve (TransformError c f) = do
@@ -131,10 +132,10 @@ instance NeedsFiles Add where
 
 instance Previewable Add where
     preview indent (Add a) =
-        indentFour indent "Add:\n" <> preview (indent + 1) a
+        indentFour indent "Add: " <\> preview (indent + 1) a
     previewDryRun indent (Add a) = do
         dryRun <- previewDryRun (indent + 1) a
-        return $ indentFour indent "Add:\n" <> dryRun
+        return $ indentFour indent "Add: " <\> dryRun
 
 instance Actionable Add where
     resolveContents (Add a) t = do
@@ -151,10 +152,10 @@ instance NeedsFiles Replace where
 
 instance Previewable Replace where
     preview indent (Replace t d) =
-        indentFour indent "Replace \"" <> t <> "\" with:\n" <> preview (indent + 1) d
+        indentFour indent ("Replace \"" <> t <> "\" with: ") <\> preview indent d
     previewDryRun indent (Replace t d) = do
-        dryRun <- previewDryRun (indent + 1) d
-        return $ indentFour indent "Replace \"" <> t <> "\" with:\n" <> dryRun
+        dryRun <- previewDryRun indent d
+        return $ indentFour indent ("Replace \"" <> t <> "\" with: ") <\> dryRun
 
 instance Actionable Replace where
     resolveContents (Replace t d) text = do

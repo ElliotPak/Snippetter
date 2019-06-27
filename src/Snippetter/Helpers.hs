@@ -74,7 +74,7 @@ replace t d = Action $ Replace t d
 -- | Helper function to apply a macro solely across a file with no default
 --   parameters.
 macroOnFile :: Macro -> FilePath -> SubMacro
-macroOnFile m f = SubMacro m H.empty [] f
+macroOnFile m f = SubMacro m H.empty [] [f]
 
 -- | Helper function for making an Action that replaces some Text with
 --   another Text.

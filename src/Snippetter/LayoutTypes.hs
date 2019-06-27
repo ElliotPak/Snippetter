@@ -35,45 +35,69 @@ instance Contentable Snippet where
     resolve (Snippet p) = getFileContents p
 
 -- | Represents using a macro on a set of parameters. These parameters can be
--- provided in Haskell code, or from reading for a file, and also has default
--- parameters associated with it.
--- This content is resolved by loading the YAML file at the specified path, and
--- running the macro multiple times, with each entry as its parameters.
-data SubMacro = SubMacro Macro Params [Params] FilePath
+-- provided in Haskell code, or from reading for a file. A set of default
+-- parameters is also provided.
+-- This content is resolved by running the macro multiple times, with each
+-- entry as its parameters. Entries are provided by files/other parameter sets
+data SubMacro = SubMacro {
+    smMacro   :: Macro
+  , smDefault :: Params
+  , smParams  :: [PathedParams]
+  , smFiles   :: [FilePath]
+  }
+
+-- | Load parameters from all parameter files in a SubMacro, without default
+--   parameters apaplied.
+smFileParams :: MonadReadFile m => SubMacro -> DocResult m [PathedParams]
+smFileParams sm = do
+    params <- mapM paramsFromFile (smFiles sm)
+    return $ concat params
+
+-- | Load all parameters in a SubMacro, with default parameters applied.
+smAllParams :: MonadReadFile m => SubMacro -> DocResult m [PathedParams]
+smAllParams sm = do
+    fileParams <- smFileParams sm
+    let allParams = smParams sm ++ fileParams
+    let defaulted = map (pathedParamUnion $ smDefault sm) allParams
+    return defaulted
 
 instance NeedsFiles SubMacro where
-    getNeededFiles (SubMacro m def list file) = do
-        entries <- macroOnEntryFile m file
+    getNeededFiles sm = do
+        params <- smAllParams sm
+        entries <- liftEither $ macroOnValues (smMacro sm) params
         containing <- getNeededFiles entries
-        return $ file : containing
+        return $ (smFiles sm) ++ containing
 
--- | TODO: rewrite this once the SubMacro rework is done
 instance Previewable SubMacro where
-    preview indent (SubMacro m def list file) = indentFour indent complete
-        where encodeT :: Params -> T.Text
-              encodeT hashmap
-                | H.null hashmap = ""
-                | otherwise      = (T.pack . B.unpack . Y.encode) hashmap
-              params = filter (\a -> a /= "") . (map encodeT)
-              ind = indentFour (indent + 1)
+    preview indent (SubMacro m def params files) = indentFour indent complete
+        where ind = indentFour (indent + 1)
               indd = indentFour (indent + 2)
               tDefaults
-                | encodeT def == "" = ""
+                | H.null def = ""
                 | otherwise =
-                    ind "\nDefault values:\n" <> indd (encodeT def)
+                    ind "\nDefault values:\n" <> indd (previewParams def)
               tParams
-                | null (params list) = ""
+                | null params = ""
                 | otherwise = 
                     ind "\nExecution with these parameters:\n"
-                        <> indd (T.unlines $ params list)
-              tFile = ind "\nExecution on this file:\n" <> indd (T.pack file)
+                        <> indd (T.unlines $ map previewPathedParams params)
+              tFile
+                | null files = ""
+                | otherwise =
+                    ind "\nExecution on these files:\n"
+                        <> indd (T.unlines . (map T.pack) $ files)
               complete = "Macro execution with the following:"
                   <> tDefaults <> tParams <> tFile
-    previewDryRun indent (SubMacro m def list file) = return ""
+    previewDryRun indent sm = do
+        allParams <- smAllParams sm
+        let ind = indentFour (indent + 1)
+        return $ "Macro execution with these parameters:\n"
+            <> ind (T.unlines $ map previewPathedParams allParams)
 
 instance Contentable SubMacro where
-    resolve (SubMacro m def list file) = do
-        doc <- macroOnEntryFile m file
+    resolve sm = do
+        params <- smAllParams sm
+        doc <- liftEither $ macroOnValues (smMacro sm) params
         resolveContents doc T.empty
 
 -- | Shorthand for a function that transforms text.

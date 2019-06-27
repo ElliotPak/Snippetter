@@ -14,12 +14,12 @@ import Control.Monad.Except
 import Control.Monad.Trans
 import Control.Monad.Trans.Except
 import Data.Aeson.Types (Object, Value (Object, String))
-import Data.HashMap.Strict (HashMap, lookup)
 import Data.Yaml
 import System.Directory (doesFileExist)
 import qualified Data.Yaml as Y
 import qualified Data.Text as T
 import qualified Data.ByteString.Char8 as B
+import qualified Data.HashMap.Strict as H
 
 -- | The @NeedsFiles@ class is used for file dependencies.
 --   Any data type that represents some operation that requires files should be an
@@ -113,10 +113,13 @@ type MacroResult = Either MacroError Doc
 
 -- | Shorthand for a macro's parameters.
 -- Identical to the type of an Aeson object.
-type Params = HashMap T.Text Value
+type Params = H.HashMap T.Text Value
 
 -- | Shorthand for a macro's type signature.
 type Macro = Params -> MacroResult
+
+previewParams :: Params -> T.Text
+previewParams = T.pack . B.unpack . Y.encode
 
 instance Show Macro where
     show s = "MACRO"
@@ -128,6 +131,16 @@ data PathedParams = PathedParams {
     params :: Params,
     ppath   :: Maybe FilePath
   } deriving (Show)
+
+-- | Applies a HashMap union to the parameters in a PathedParams.
+pathedParamUnion :: Params -> PathedParams -> PathedParams
+pathedParamUnion def (PathedParams params ppath) =
+    PathedParams (H.union params def) ppath
+
+previewPathedParams :: PathedParams -> T.Text
+previewPathedParams (PathedParams params _)
+  | H.null params = ""
+  | otherwise     = previewParams params
 
 -- | Things that can go wrong while a macro is being run.
 data MacroError =
@@ -217,7 +230,7 @@ loadLayoutFile path = do
 -- | Converts a PathedLayout to a SiteAction, when given a mapping of strings
 --   to macros.
 layoutToAction ::
-    HashMap T.Text Macro -> PathedLayout -> Either DocError SiteAction
+    H.HashMap T.Text Macro -> PathedLayout -> Either DocError SiteAction
 layoutToAction map (PathedLayout layout input) = ll input layout
     where
         ll path (LayoutBuild output macroName contents) = do
@@ -230,7 +243,7 @@ layoutToAction map (PathedLayout layout input) = ll input layout
 -- | Loads a list of SiteActions from a file, when given a mapping of strings
 --   to macros
 loadSiteActions :: MonadReadFile m =>
-    FilePath -> HashMap T.Text Macro -> DocResult m [SiteAction]
+    FilePath -> H.HashMap T.Text Macro -> DocResult m [SiteAction]
 loadSiteActions path map = do
     layout <- loadLayoutFile path
     liftEither $ mapM (layoutToAction map) layout
@@ -249,14 +262,19 @@ evaluateBuildAction (Build m mp f) = do
     resolveContents executed T.empty
 evaluateBuildAction _              = undefined
 
+-- | Load all paramaters from a parameter file as PathedParams.
+paramsFromFile :: MonadReadFile m => FilePath -> DocResult m [PathedParams]
+paramsFromFile file = do
+    values <- yamlIfExists file :: MonadReadFile m => DocResult m [Params]
+    let addPath x = PathedParams x $ Just file
+    return $ map addPath values
+
 -- | Create a Doc by running a Macro, using the values of a YAML collection as
 --   its parameters.
 macroOnEntryFile :: MonadReadFile m => Macro -> FilePath -> DocResult m Doc
 macroOnEntryFile macro path = do
-    values <- yamlIfExists path :: MonadReadFile m => DocResult m [Params]
-    let addPath x = PathedParams x $ Just path
-    let mp = map addPath values
-    liftEither $ macroOnValues macro mp
+    fromFile <- paramsFromFile path
+    liftEither $ macroOnValues macro fromFile
 
 -- | Create a Doc by running a Macro consecutively, using each entry in the
 --   PathedParams list as parameters.

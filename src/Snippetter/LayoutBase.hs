@@ -39,14 +39,14 @@ class Previewable p where
     previewDryRun :: MonadReadFile m => Int -> p -> DocResult m T.Text
     previewDryRun indent pv = return $ preview indent pv
 
-instance Previewable T.Text where
-    preview indent text = indentFour indent text
-
 instance Previewable p => Previewable [p] where
     preview indent = T.intercalate "\n" . map (preview (indent + 1))
     previewDryRun indent list = do
         mapped <- mapM (previewDryRun (indent + 1)) list
         return $ T.intercalate "\n" mapped
+
+instance Previewable T.Text where
+    preview indent text = indentFour indent $ "\"" <> text <> "\""
 
 -- | The @Contentable@ class is used to represent operations that evaluate to
 --   text.
@@ -163,7 +163,7 @@ data DocError =
 data Layout =
     LayoutBuild FilePath T.Text Params |
     LayoutCopy FilePath FilePath
-    deriving (Show)
+    deriving (Show, Eq)
 
 instance Y.FromJSON Layout where
     parseJSON = Y.withObject "LayoutFile" $ \o -> do
@@ -181,7 +181,7 @@ instance Y.FromJSON Layout where
 data PathedLayout = PathedLayout {
     layout :: Layout,
     lpath   :: Maybe FilePath
-  } deriving (Show)
+  } deriving (Show, Eq)
 
 -- | Describes an action taken to build the site.
 data SiteAction =

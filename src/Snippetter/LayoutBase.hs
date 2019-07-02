@@ -130,7 +130,7 @@ instance Show Macro where
 data PathedParams = PathedParams {
     params :: Params,
     ppath   :: Maybe FilePath
-  } deriving (Show)
+  } deriving (Show, Eq)
 
 -- | Applies a HashMap union to the parameters in a PathedParams.
 pathedParamUnion :: Params -> PathedParams -> PathedParams
@@ -147,7 +147,7 @@ data MacroError =
     AbsentKey T.Text |
     WrongKeyType T.Text |
     MiscMacroError T.Text
-    deriving (Show)
+    deriving (Show, Eq)
 
 -- | Things that can go wrong while a page is being built.
 data DocError =
@@ -157,7 +157,7 @@ data DocError =
     InvalidFileFormat FilePath |
     MissingMacro T.Text |
     MiscError T.Text
-    deriving (Show)
+    deriving (Show, Eq)
 
 -- | Site actions as immediately loaded from a YAML file.
 data Layout =

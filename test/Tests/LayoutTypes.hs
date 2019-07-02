@@ -8,9 +8,6 @@ import Snippetter.LayoutTypes
 import Control.Monad.Trans.Except
 import qualified Data.Text as T
 
-ret :: DocResult IO a -> IO (Either DocError a)
-ret val = runExceptT val
-
 tests = [ testGroup "Content" testContent
         ]
 
@@ -25,16 +22,13 @@ testText = [ testCase "Text file deps" testTextFiles
            ]
 
 testTextFiles = do
-    files <- ret (getNeededFiles $ T.pack "test")
-    assertEqual "Should be Right []" (Right []) files
+    retPass (getNeededFiles $ T.pack "test") []
 
 testTextPreview =
     preview 0 (T.pack "test") @?= (T.pack "\"test\"")
 
 testTextPreviewDryRun = do
-    preview <- ret (previewDryRun 0 $ T.pack "test")
-    assertEqual "Should be Right \"test\"" (Right (T.pack "\"test\"")) preview
+    retPass (previewDryRun 0 $ T.pack "test") (T.pack "\"test\"")
 
 testTextResolve = do
-    content <- ret (resolve $ T.pack "test")
-    assertEqual "Should be Right \"test\"" (Right (T.pack "test")) content
+    retPass (resolve $ T.pack "test") (T.pack "test")

@@ -25,7 +25,7 @@ instance Previewable Snippet where
     previewDryRun indent (Snippet s) = do
         contents <- getFileContents s
         let nameSegment = "Snippet named \"" <> (T.pack s) <> "\" with the contents:"
-        return $ indentFour indent nameSegment
+        return $ indentFour indent nameSegment <> "\n"
             <> indentFour (indent + 1) contents
 
 instance NeedsFiles Snippet where

@@ -5,7 +5,7 @@ import qualified Tests.LayoutBaseBasics
 import qualified Tests.LayoutTypes
 
 tests :: TestTree
-tests = testGroup "tests"
+tests = testGroup "Tests"
     [ testGroup "LayoutBase basics" Tests.LayoutBaseBasics.tests
     , testGroup "Layout Types" Tests.LayoutTypes.tests
     ]

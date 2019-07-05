@@ -59,4 +59,4 @@ retFailMock state et expected = do
     assertEqual "" (Left expected) result
 
 retPassFileRead contents = retPassMock $ successfulRead contents
-retPassMissing file = retFailMock $ missingFile file
+retFailMissing file = retFailMock $ missingFile file

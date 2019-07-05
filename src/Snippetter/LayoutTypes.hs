@@ -36,9 +36,11 @@ instance Contentable Snippet where
 
 -- | Represents using a macro on a set of parameters. These parameters can be
 -- provided in Haskell code, or from reading for a file. A set of default
--- parameters is also provided.
+-- parameters can also be specified.
+--
 -- This content is resolved by running the macro multiple times, with each
--- entry as its parameters. Entries are provided by files/other parameter sets
+-- entry as its parameters, and concatenating the results together. Parameters
+-- are provided by files/specified parameter maps.
 data SubMacro = SubMacro {
     smMacro   :: Macro
   , smDefault :: Params
@@ -47,7 +49,7 @@ data SubMacro = SubMacro {
   }
 
 -- | Load parameters from all parameter files in a SubMacro, without default
---   parameters apaplied.
+--   parameters applied.
 smFileParams :: MonadReadFile m => SubMacro -> DocResult m [PathedParams]
 smFileParams sm = do
     params <- mapM paramsFromFile (smFiles sm)

@@ -68,7 +68,7 @@ instance NeedsFiles SubMacro where
         params <- smAllParams sm
         entries <- liftEither $ macroOnValues (smMacro sm) params
         containing <- getNeededFiles entries
-        return $ (smFiles sm) ++ containing
+        return $ removeDuplicates $ (smFiles sm) ++ containing
 
 instance Previewable SubMacro where
     preview indent (SubMacro m def params files) = indentFour indent complete
@@ -166,7 +166,7 @@ instance Previewable Add where
 instance Actionable Add where
     resolveContents (Add a) t = do
         aa <- resolve a
-        return $ T.concat [aa, t]
+        return $ t <> aa
 
 -- | An action that replaces text.
 -- Once its content is resolved, it will replace the supplied text with the

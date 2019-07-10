@@ -7,8 +7,12 @@ import Test.Tasty.HUnit
 import Tests.Helpers
 import Snippetter.LayoutBase
 import Snippetter.LayoutTypes
+import Snippetter.Helpers
 import Control.Monad.Trans.Except
 import qualified Data.Text as T
+import qualified Data.HashMap.Strict as H
+import qualified Data.ByteString.Char8 as B
+import qualified Data.Yaml as Y
 
 tests =
     [ testGroup "Text" testText
@@ -149,4 +153,83 @@ testTransformErrorResolve =
         retFailMissing "foo" (resolve transErrFileFail) (InvalidPath "foo")
     ]
 
-testSubMacro = []
+testSubMacro =
+    [ testGroup "File deps" testSubMacroFiles
+    , testGroup "Preview" testSubMacroPreview
+    , testGroup "Preview Dry Run" testSubMacroPreviewDryRun
+    , testGroup "Resolving" testSubMacroResolve
+    ]
+
+basicMacro :: Macro
+basicMacro params = do
+    temp <- lookupText "title" params
+    return [add temp]
+
+sameFileMacro :: Macro
+sameFileMacro params = return [add $ Snippet "foo"]
+
+fileMacro :: Macro
+fileMacro params = do
+    temp <- lookupText "title" params
+    return [add $ Snippet $ T.unpack temp]
+
+fromText str = unObject (Y.decodeEither' (B.pack str) :: Either Y.ParseException Y.Value)
+    where unObject (Right (Y.Object o)) = o
+
+makePathed o = PathedParams o Nothing
+
+params1 = fromText "title: foo"
+params2 = fromText "title: bar"
+params3 = fromText "title: baz"
+paramsNoTitle = fromText "something: test"
+
+smEmpty = SubMacro basicMacro H.empty [] []
+smEmptySameFile = SubMacro sameFileMacro H.empty [] []
+smEmptyFile = SubMacro fileMacro H.empty [] []
+smSingle = SubMacro basicMacro H.empty [makePathed params2] []
+smSingleFile = SubMacro fileMacro H.empty [makePathed params2] []
+smSingleSameFile = SubMacro sameFileMacro H.empty [makePathed params2] []
+smMultiple = SubMacro basicMacro H.empty [makePathed params1, makePathed params2, makePathed params3] []
+smMultipleFile = SubMacro fileMacro H.empty [makePathed params1, makePathed params2, makePathed params3] []
+smMultipleSameFile = SubMacro sameFileMacro H.empty [makePathed params1, makePathed params2, makePathed params3] []
+smDefault = SubMacro basicMacro params1 [makePathed paramsNoTitle] []
+smDefault2 = SubMacro basicMacro params2 [makePathed params1] []
+smDefaultNoParams = SubMacro basicMacro params1 [] []
+
+testSubMacroFiles =
+    [ testCase "Empty, Macro uses no files" $
+        retPassIO (getNeededFiles smEmpty) []
+    , testCase "Empty, Macro uses the same file constantly" $
+        retPassIO (getNeededFiles smEmptySameFile) []
+    , testCase "Empty, Macro uses file specified in params" $
+        retPassIO (getNeededFiles smEmptyFile) []
+    , testCase "Single params, macro uses no files" $
+        retPassIO (getNeededFiles smSingle) []
+    , testCase "Single params, macro uses same file constantly" $
+        retPassIO (getNeededFiles smSingleSameFile) ["foo"]
+    , testCase "Single params, macro uses file specified in params" $
+        retPassIO (getNeededFiles smSingleFile) ["bar"]
+    , testCase "Multiple params, macro uses no files" $
+        retPassIO (getNeededFiles smMultiple) []
+    , testCase "Multiple params, macro uses same file constantly" $
+        retPassIO (getNeededFiles smMultipleSameFile) ["foo"]
+    , testCase "Multiple params, macro uses file specified in params" $
+        retPassIO (getNeededFiles smMultipleFile) ["foo", "bar", "baz"]
+    ]
+
+testSubMacroPreview = []
+testSubMacroPreviewDryRun = []
+testSubMacroResolve =
+    [ testCase "No params" $
+        retPassIO (resolve smEmpty) (T.pack "")
+    , testCase "No params with default" $
+        retPassIO (resolve smDefaultNoParams) (T.pack "")
+    , testCase "Single params" $
+        retPassIO (resolve smSingle) (T.pack "bar")
+    , testCase "Single params with required default" $
+        retPassIO (resolve Tests.Content.smDefault) (T.pack "foo")
+    , testCase "Single params with overwritten default" $
+        retPassIO (resolve smDefault2) (T.pack "foo")
+    , testCase "Multiple params" $
+        retPassIO (resolve smMultiple) (T.pack "foobarbaz")
+    ]

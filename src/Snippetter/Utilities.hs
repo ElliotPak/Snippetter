@@ -48,3 +48,10 @@ addSingleLineText base single
 
 -- | Infix operator for addSingleLineText.
 a <\> b = addSingleLineText a b
+
+-- | Remove duplicates from a list.
+--   Taken from https://stackoverflow.com/a/16108856
+removeDuplicates :: Eq a => [a] -> [a]
+removeDuplicates = foldl (\seen x -> if x `elem` seen
+                                     then seen
+                                     else seen ++ [x]) []

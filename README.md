@@ -24,7 +24,6 @@ You must have the Haskell platform installed.
 
 The next things to be added are, in no particular order:
 
-- Giving `MacroOnFile` default values and giving it parameters in code
 - Defining simple macros in YAML
 - Checking dependencies before building
 - Theming

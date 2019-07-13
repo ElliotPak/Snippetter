@@ -3,8 +3,7 @@
 
 module Snippetter.Helpers where
 
-import Snippetter.LayoutBase
-import Snippetter.LayoutTypes
+import Snippetter.Build
 import Snippetter.Utilities
 import Data.Aeson.Types (Object, Value (Object, String))
 import Data.Hashable
@@ -57,52 +56,3 @@ lookupObjectDefault = lookupDefault unObject
 -- | Shorthand for @lookupDefault unText@.
 lookupTextDefault :: T.Text -> T.Text -> Params -> T.Text
 lookupTextDefault = lookupDefault unText
-
--- | Helper function for making an Action that adds a Text.
-addText :: T.Text -> Action
-addText s =  Action $ Add s
-
--- | Helper function for making an Action that adds some Content.
-add :: Contentable c => c -> Action
-add c = Action $ Add c
-
--- | Helper function for making an Action that replaces some Text with
---   Content.
-replace :: Actionable a => T.Text -> a -> Action
-replace t d = Action $ Replace t d
-
--- | Helper function to apply a macro solely across a file with no default
---   parameters.
-macroOnFile :: Macro -> FilePath -> SubMacro
-macroOnFile m f = SubMacro m H.empty [] [f]
-
--- | Helper function for making an Action that replaces some Text with
---   another Text.
-replaceText :: T.Text -> T.Text -> Action
-replaceText t d = replace t [add d]
-
--- | Helper function for a Transform containing a Snippet.
-modSnippet :: FilePath -> (T.Text -> T.Text) -> Transform
-modSnippet path func = Transform (Snippet path) func
-
--- | Helper function for a Transform containing a Snippet.
-modSnippetError :: FilePath -> (T.Text -> Either DocError T.Text) -> TransformError
-modSnippetError path func = TransformError (Snippet path) func
-
--- | (TEMPORARY AND UNFINISHED)
---
---   The difference in paths between two files.
-relativePath :: FilePath -> FilePath -> FilePath
-relativePath from to = rel "" splitFrom splitTo
-    where
-        splitTo   = splitOn [pathSeparator] to
-        splitFrom = splitOn [pathSeparator] from
-        rel path []     []     = path
-        rel path (x:[]) []     = path
-        rel path (x:xs) []     = rel (".." </> path) xs []
-        rel path []     (y:ys) = rel (path </> y) [] ys
-        rel path (x:xs) (y:ys)
-          | path /= "" && xs /= [] = rel (".." </> path </> y) xs ys
-          | path /= "" && xs == [] = rel (path </> y) xs ys
-          | x == y                 = rel path xs ys
-          | otherwise              = rel (".." </> path </> y) xs ys

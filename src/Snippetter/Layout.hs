@@ -10,23 +10,27 @@ import qualified Data.Text as T
 import qualified Data.Yaml as Y
 import qualified Data.HashMap.Strict as H
 
-type LayoutResult a = Either LayoutError a
-type LayoutFileResult m a = ExceptT LayoutError m a
-type MacroMap = H.HashMap T.Text Macro
-
-errorMappingDoc = LayoutDocError
-
--- | Site actions as immediately loaded from a YAML file.
-data Layout =
-    LayoutBuild FilePath T.Text Params |
-    LayoutCopy FilePath FilePath
-    deriving (Show, Eq)
-
+-- | Possible errors when a @SiteAction@ is being made/executed.
 data LayoutError =
     LayoutDocError DocError
   | LayoutYamlError YamlError
   | LayoutFileError FileError
   | MiscLayoutError T.Text
+    deriving (Show, Eq)
+
+-- | The result of a function that makes/executes a @SiteAction@.
+type LayoutResult a = Either LayoutError a
+
+-- | The result of a function that makes/executes a @SiteAction@ and can read files.
+type LayoutFileResult m a = ExceptT LayoutError m a
+
+-- | A map of @T.Text@ to @Macro@s.
+type MacroMap = H.HashMap T.Text Macro
+
+-- | Site actions as immediately loaded from a YAML file.
+data Layout =
+    LayoutBuild FilePath T.Text Params |
+    LayoutCopy FilePath FilePath
     deriving (Show, Eq)
 
 instance Y.FromJSON Layout where
@@ -52,9 +56,17 @@ data SiteAction =
     Build Macro PathedParams FilePath |
     Copy FilePath FilePath
 
+-- | Retrieves contents of the specific file, and maps possible errors to
+--   @LayoutFileError@s.
+fileContentsInLayout :: MonadReadFile m => FilePath -> LayoutFileResult m T.Text
+fileContentsInLayout path = getFileContents path `mapResultError` mapping
+    where mapping err = LayoutFileError err
+
+-- | Adds a path to a @Layout@.
 addPath :: FilePath -> Layout -> PathedLayout
 addPath path layout = PathedLayout layout (Just path)
 
+-- | Load a YAML file as a list of @Layout@s.
 yamlAsLayout :: MonadReadFile m => FilePath -> LayoutFileResult m [Layout]
 yamlAsLayout path = let errorMapping x = LayoutYamlError x in
     (yamlIfExists path :: MonadReadFile m => YamlResult m [Layout])
@@ -66,8 +78,8 @@ loadLayoutFile path = do
     y <- yamlAsLayout path
     return $ map (addPath path) y
 
--- | Converts a PathedLayout to a SiteAction, when given a mapping of strings
---   to macros.
+-- | Converts a @PathedLayout@ to a @SiteAction@, when given a mapping of
+--   strings to macros.
 layoutToAction ::
     H.HashMap T.Text Macro -> PathedLayout -> Either LayoutError SiteAction
 layoutToAction map (PathedLayout layout input) = ll input layout
@@ -75,11 +87,11 @@ layoutToAction map (PathedLayout layout input) = ll input layout
         ll path (LayoutBuild output macroName contents) = do
             let mp = PathedParams contents input
             let err = MissingMacro macroName
-            macro <- mapLeft errorMappingDoc $ lookupEither err macroName map
+            macro <- mapLeft LayoutDocError $ lookupEither err macroName map
             return $ Build macro mp output
         ll path (LayoutCopy from to) = return $ Copy from to
 
--- | Loads a list of SiteActions from a file, when given a mapping of strings
+-- | Loads a list of @SiteAction@ from a file, when given a mapping of strings
 --   to macros
 loadSiteActions :: MonadReadFile m =>
     FilePath -> H.HashMap T.Text Macro -> LayoutFileResult m [SiteAction]
@@ -87,13 +99,9 @@ loadSiteActions path map = do
     layout <- loadLayoutFile path
     liftEither $ mapM (layoutToAction map) layout
 
--- | Determine the files required to evaluate a SiteAction.
+-- | Determine the files required to evaluate a @SiteAction@.
 filesNeeded :: MonadReadFile m => SiteAction -> LayoutFileResult m [FilePath]
 filesNeeded (Build m mp f) =
     ((liftEither $ executeMacro m mp) >>= docNeededFiles)
-        `mapResultError` errorMappingDoc
+        `mapResultError` LayoutDocError
 filesNeeded (Copy from to) = return [to]
-
-fileContentsInLayout :: MonadReadFile m => FilePath -> LayoutFileResult m T.Text
-fileContentsInLayout path = getFileContents path `mapResultError` mapping
-    where mapping err = LayoutFileError err

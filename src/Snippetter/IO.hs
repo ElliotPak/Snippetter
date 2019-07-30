@@ -13,6 +13,7 @@ import qualified Data.Text as T
 import qualified Data.Yaml as Y
 import qualified Data.ByteString.Char8 as B
 
+-- | Possible errors when reading files.
 data FileError =
     NotFound FilePath
   | IsInUse FilePath
@@ -21,21 +22,29 @@ data FileError =
   | OtherFileError FilePath IOError
     deriving (Show, Eq)
 
+-- | Possible errors when decoding YAML from a file.
 data YamlError =
     YamlFileError FileError
   | InvalidYamlFormat FilePath
   | OtherYamlError FilePath T.Text
     deriving (Show, Eq)
 
+-- | The result a function that reads files.
 type FileResult m a = ExceptT FileError m a
+
+-- | The result a function that reads and decodes YAML files.
 type YamlResult m a = ExceptT YamlError m a
 
 -- | The @MonadReadFile@ class is used to represent monads that can read files.
 --   It can also be used for mocking purposes.
 class Monad m => MonadReadFile m where
+    -- | Retrieves contents of the specified file. Any errors are represented
+    --   by a FileResult.
     getFileContents :: FilePath -> ExceptT FileError m T.Text
+    -- | Determines if the specified file exists.
     fileExists :: FilePath -> m Bool
 
+-- | Wrap an IOException in a FileError.
 rewrapReadError :: FilePath -> IOException -> FileError
 rewrapReadError path e
   | isPermissionError e = NoReadPermission path
@@ -53,11 +62,8 @@ instance MonadReadFile IO where
 decodeYaml :: Y.FromJSON a => T.Text -> Either Y.ParseException a
 decodeYaml str = Y.decodeEither' $ B.pack $ T.unpack str
 
-mapResultError :: Monad m => ExceptT e m a -> (e -> e') -> ExceptT e' m a
-mapResultError except mapping = ExceptT answer
-    where ran = runExceptT except
-          answer = liftM (mapLeft mapping) ran
-
+-- | Retrieves contents of the specified file, and maps possible errors to a
+--   new type.
 getFileContents' :: MonadReadFile m => FilePath -> (FileError -> e') -> ExceptT e' m T.Text
 getFileContents' path func =
     (getFileContents path) `mapResultError` func

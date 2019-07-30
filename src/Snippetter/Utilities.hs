@@ -9,6 +9,8 @@ import Data.Aeson.Types (Object, Value (Object, String))
 import Data.Hashable
 import Data.HashMap.Strict (HashMap, lookup)
 import Data.List.Split
+import Control.Monad.Except
+import Control.Monad.Trans.Except
 import Prelude hiding (lookup)
 import System.FilePath
 import qualified Data.Text as T
@@ -17,6 +19,13 @@ import qualified Data.Text as T
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f (Left x) = Left $ f x
 mapLeft _ (Right x) = Right x
+
+-- | Maps the error values of a Result type.
+--   Right now this type is an alias for ExceptTs.
+mapResultError :: Monad m => ExceptT e m a -> (e -> e') -> ExceptT e' m a
+mapResultError except mapping = ExceptT answer
+    where ran = runExceptT except
+          answer = liftM (mapLeft mapping) ran
 
 -- | Converts a Maybe to an Either.
 maybeToEither :: l -> Maybe r -> Either l r

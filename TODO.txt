@@ -1,5 +1,0 @@
-- Build.hs needs to be rewritten to work with new Doc definition
-moving build-specific things out of Layout.hs
-add all content types to Content.hs (same with actions)
-remove quick addition functions from Helpers.hs
-combine utilities and helpers files

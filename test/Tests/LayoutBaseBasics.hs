@@ -2,7 +2,7 @@ module Tests.LayoutBaseBasics (tests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import Snippetter.LayoutBase
+import Snippetter.Layout
 
 tests =
     [ testGroup "Pathed types" testPathedTypes

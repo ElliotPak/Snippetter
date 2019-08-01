@@ -5,8 +5,7 @@ module Tests.Actions (tests) where
 import Test.Tasty
 import Test.Tasty.HUnit
 import Tests.Helpers
-import Snippetter.LayoutBase
-import Snippetter.LayoutTypes
+import Snippetter.Build
 import Control.Monad.Trans.Except
 import qualified Data.Text as T
 

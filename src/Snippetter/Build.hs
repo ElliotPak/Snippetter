@@ -114,8 +114,8 @@ executeMacro m (PathedParams params path) =
 data Content =
     Text T.Text
   | Snippet FilePath
-  | Transform (T.Text -> T.Text) Content
-  | TransformError (T.Text -> Either T.Text T.Text) Content
+  | Transform Content (T.Text -> T.Text)
+  | TransformError Content (T.Text -> Either T.Text T.Text)
   | SubMacro SubMacroExec
   | Doc [Action]
 
@@ -178,8 +178,8 @@ smEvaluate sme = do
 conNeededFiles :: MonadReadFile m => Content -> DocFileResult m [FilePath]
 conNeededFiles (Text _) = return []
 conNeededFiles (Snippet s) = return [s]
-conNeededFiles (Transform _ c) = conNeededFiles c
-conNeededFiles (TransformError _ c) = conNeededFiles c
+conNeededFiles (Transform c _) = conNeededFiles c
+conNeededFiles (TransformError c _) = conNeededFiles c
 conNeededFiles (SubMacro sme) = smNeededFiles sme
 conNeededFiles (Doc d) = docNeededFiles d
 
@@ -189,10 +189,10 @@ conPreview :: Int -> Content -> T.Text
 conPreview indent (Text t) = indentFour indent $ "\"" <> t <> "\""
 conPreview indent (Snippet s) =
     indentFour indent $ "Snippet named \"" <> (T.pack s) <> "\""
-conPreview indent (Transform f c) = do
+conPreview indent (Transform c f) = do
     indentFour indent "Transformation of: " <\> pre
     where pre = conPreview (indent + 1) c
-conPreview indent (TransformError f c) =
+conPreview indent (TransformError c f) =
     indentFour indent "Transformation of: " <\> pre
     where pre = conPreview (indent + 1) c
 conPreview indent (SubMacro sme) = smPreview indent sme
@@ -207,10 +207,10 @@ conPreviewDryRun indent (Snippet s) = do
    let nameSegment = "Snippet named \"" <> (T.pack s) <> "\" with the contents:"
    return $ indentFour indent nameSegment <> "\n"
        <> indentFour (indent + 1) contents
-conPreviewDryRun indent (Transform f c) = do
+conPreviewDryRun indent (Transform c f) = do
     dryRun <- conPreviewDryRun (indent + 1) c
     return $ indentFour indent "Transformation of: " <\> dryRun
-conPreviewDryRun indent (TransformError f c) = do
+conPreviewDryRun indent (TransformError c f) = do
     dryRun <- conPreviewDryRun (indent + 1) c
     return $ indentFour indent "Transformation of: " <\> dryRun
 conPreviewDryRun indent (SubMacro sme) = smPreviewDryRun indent sme
@@ -220,10 +220,10 @@ conPreviewDryRun indent (Doc d) = return ""
 conEvaluate :: MonadReadFile m => Content -> DocFileResult m T.Text
 conEvaluate (Text t) = return t
 conEvaluate (Snippet s) = fileContentsInDoc s
-conEvaluate (Transform f c) = do
+conEvaluate (Transform c f) = do
     sub <- conEvaluate c
     return $ f sub
-conEvaluate (TransformError f c) = do
+conEvaluate (TransformError c f) = do
     sub <- conEvaluate c
     let result = mapLeft (\e -> MiscDocError e) $ f sub
     liftEither $ result
@@ -244,18 +244,22 @@ actExecute (SingleContentAction c f) text = do
     evaluated <- conEvaluate c
     return $ f text evaluated
 
--- | Public function for creating a @Text@.
+-- | Public function for creating a @Text@ (the @Content@) from a @Data.Text@.
 text = Text
+-- | Public function for creating a @Text@ (the @Content@) from a @String@.
+string str = Text $ T.pack str
 -- | Public function for creating a @Snippet@.
 snippet = Snippet
 -- | Public function for creating a @Transform@.
 transform = Transform
 -- | Public function for creating a @TransformError@.
 transformError = TransformError
--- | Public function for creating a @SubMacro@.
-subMacro = SubMacro
 -- | Public function for creating a @Doc@.
 doc = Doc
+-- | Public function for creating a @SubMacro@.
+subMacro = SubMacro
+-- | Public function for creating a @SubMacroExec@.
+subMacroExec = SubMacroExec
 
 -- | Shorthand for creating an @Action@ that adds one @Content@ to text.
 add :: Content -> Action
@@ -277,6 +281,10 @@ addText t = add $ text t
 replaceText :: T.Text -> T.Text -> Action
 replaceText t1 t2 = replace t1 $ text t2
 
--- | Shorthand for creating an @Action@ that runs a @Macro@ on one file.
+-- | Public function for creating a @SubMacro@ with just one @SubMacroExec@.
+singleSubMacro :: Macro -> Params -> [PathedParams] -> [FilePath] -> Content
+singleSubMacro m p pp fp = SubMacro $ SubMacroExec m p pp fp
+
+-- | Shorthand for creating a @SubMacro@ that executes the macro on one file.
 macroOnFile :: Macro -> FilePath -> Content
 macroOnFile m f = subMacro $ SubMacroExec m H.empty [] [f]

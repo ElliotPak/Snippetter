@@ -8,10 +8,12 @@ import Control.Applicative
 import Control.Monad.Except
 import Control.Monad.Trans
 import Control.Monad.Trans.Except
+import Data.Maybe
 import System.Directory
 import System.Process
 import System.Exit
 import System.IO.Error
+import System.Console.ANSI
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Data.Yaml as Y
@@ -49,20 +51,26 @@ class Monad m => MonadReadFile m where
     -- | Determines if the specified file exists.
     fileExists :: FilePath -> m Bool
 
+data NotifyType = InProgress | Success | Failure deriving (Show, Eq)
+
 -- | The @MonadWorld@ class is used to represent monads that interact with the
 --   outside world, in ways that site builder generally should. This mainly
 --   exists for mocking purposes.
 class MonadReadFile m => MonadWorld m where
     -- | Write text to a file.
-    writeFile  :: FilePath -> T.Text -> ExceptT FileError m ()
+    writeFile   :: FilePath -> T.Text -> ExceptT FileError m ()
     -- | Delete the given file.
-    deleteFile :: FilePath -> ExceptT FileError m ()
+    deleteFile  :: FilePath -> ExceptT FileError m ()
     -- | Copy the first file to the location of the second.
-    copyFile   :: FilePath -> FilePath -> ExceptT FileError m ()
+    copyFile    :: FilePath -> FilePath -> ExceptT FileError m ()
     -- | Move the first file to the location of the second.
-    moveFile   :: FilePath -> FilePath -> ExceptT FileError m ()
+    moveFile    :: FilePath -> FilePath -> ExceptT FileError m ()
     -- | Run the specified process, with the given arguments and stdin input.
-    runProcess :: FilePath -> [T.Text] -> T.Text -> m (ExitCode, T.Text, T.Text)
+    runProcess  :: FilePath -> [T.Text] -> T.Text -> m (ExitCode, T.Text, T.Text)
+    -- | Notify the user of something.
+    notifyUser  :: NotifyType -> T.Text -> m ()
+    -- | Clear the last notification sent.
+    clearNotify :: m ()
 
 -- | Helper function for IO operations
 tryIO :: IO a -> (a -> b) -> (IOException -> c) -> ExceptT c IO b
@@ -92,6 +100,27 @@ instance MonadWorld IO where
         let stdin'= T.unpack stdin
         results <- readProcessWithExitCode process args' stdin'
         return $ textify results
+    notifyUser = notifyUserIO
+    clearNotify = return ()
+
+notifyProgress :: MonadWorld m => T.Text -> m ()
+notifyProgress = notifyUser InProgress
+notifySuccess :: MonadWorld m => T.Text -> m ()
+notifySuccess = notifyUser Success
+notifyFailure :: MonadWorld m => T.Text -> m ()
+notifyFailure = notifyUser Failure
+
+notifyUserIO :: NotifyType -> T.Text -> IO ()
+notifyUserIO nt text = do
+    let lookup' a l = fromJust $ lookup a l
+    let colour = lookup' nt [(InProgress, Yellow), (Success, Green), (Failure, Red)]
+    let marker = lookup' nt [(InProgress, "..."), (Success, "Ok!"), (Failure, "!!!")]
+    setSGR [SetConsoleIntensity NormalIntensity
+           , SetColor Foreground Vivid colour]
+    putStr $ "[" <> marker <> "] "
+    setSGR [SetConsoleIntensity NormalIntensity
+           , SetColor Foreground Vivid White]
+    TIO.putStrLn text
 
 -- | Wrap an IOException in a FileError. Used when reading files.
 rewrapReadError :: FilePath -> IOException -> FileError

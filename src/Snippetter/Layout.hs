@@ -1,8 +1,11 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Snippetter.Layout where
 
 import Snippetter.Utilities
 import Snippetter.Build
 import Snippetter.IO
+import Prelude hiding (writeFile)
 import Data.Yaml ((.:))
 import Control.Monad.Except
 import Control.Monad.Trans.Except
@@ -78,6 +81,35 @@ loadLayoutFile path = do
     y <- yamlAsLayout path
     return $ map (addPath path) y
 
+executeSiteAction :: MonadWorld m => SiteAction -> LayoutFileResult m ()
+executeSiteAction (Build m pp fp) = do
+    executed <- executeMacro m pp `mapResultError` LayoutDocError
+    writeFile fp executed `mapResultError` LayoutFileError
+executeSiteAction (Copy from to) =
+    copyFile from to `mapResultError` LayoutFileError
+
+executeSiteAction' :: MonadWorld m => SiteAction -> m ()
+executeSiteAction' sa@(Copy to from) = do
+    notifyProgress $ "Copying \"" <> (T.pack from) <> "\" to \"" <> (T.pack to) <> "\"..."
+    result <- runExceptT $ executeSiteAction sa
+    case result of
+      Right r -> notifySuccess $ "Successfully copied \"" <> (T.pack from) <> "\" to \"" <> (T.pack to) <> "\"."
+      Left l  -> notifySuccess $ "Failed to copy \"" <> (T.pack from) <> "\" to \"" <> (T.pack to) <> "\":"
+executeSiteAction' sa@(Build m pp fp) = do
+    notifyProgress $ "Building \"" <> (T.pack fp) <> "\"..."
+    result <- runExceptT $ executeSiteAction sa
+    case result of
+      Right r -> notifySuccess $ "Successfully built \"" <> (T.pack fp) <> "\"."
+      Left l  -> notifySuccess $ "Failed to build \"" <> (T.pack fp) <> "\":"
+
+executeLayoutFile :: MonadWorld m =>
+    FilePath -> H.HashMap T.Text Macro -> m ()
+executeLayoutFile path map = do
+    actions <- runExceptT $ loadSiteActions path map
+    case actions of
+      Right r -> mapM_ executeSiteAction' r
+      Left l  -> notifyFailure $ "Failed to load \"" <> (T.pack path) <> "\"."
+
 -- | Converts a @PathedLayout@ to a @SiteAction@, when given a mapping of
 --   strings to macros.
 layoutToAction ::
@@ -102,6 +134,5 @@ loadSiteActions path map = do
 -- | Determine the files required to evaluate a @SiteAction@.
 filesNeeded :: MonadReadFile m => SiteAction -> LayoutFileResult m [FilePath]
 filesNeeded (Build m mp f) =
-    ((liftEither $ executeMacro m mp) >>= docNeededFiles)
-        `mapResultError` LayoutDocError
-filesNeeded (Copy from to) = return [to]
+        filesForMacro m mp `mapResultError` LayoutDocError
+filesNeeded (Copy from to) = return [from]

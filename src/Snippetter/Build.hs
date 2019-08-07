@@ -101,14 +101,23 @@ macroOnEntryFile macro path = do
 --   PathedParams list as parameters.
 macroOnValues :: Macro -> [PathedParams] -> DocResult
 macroOnValues m v = do
-    mapped <- mapM (executeMacro m) v
+    mapped <- mapM (buildDoc m) v
     return $ concat mapped
 
--- | Run a @Macro@ with the given parameters.
-executeMacro :: Macro -> PathedParams -> DocResult
-executeMacro m (PathedParams params path) =
+-- | Build a @Doc@ by running a @Macro@ with the given parameters.
+buildDoc :: Macro -> PathedParams -> DocResult
+buildDoc m (PathedParams params path) =
     mapLeft (convertMacroError path) $ m params
     where convertMacroError path err = DocMacroError err path
+
+executeMacro :: MonadReadFile m => Macro -> PathedParams -> DocFileResult m T.Text
+executeMacro m pp = do
+    doc <- liftEither $ buildDoc m pp
+    docExecute doc T.empty
+
+filesForMacro :: MonadReadFile m => Macro -> PathedParams -> DocFileResult m [FilePath]
+filesForMacro m pp =
+    (liftEither $ buildDoc m pp) >>= docNeededFiles
 
 -- | Represents operations that evaluate to text.
 data Content =
@@ -146,7 +155,8 @@ smAllParams sm = do
 -- | Add fields present in the first @Params@ to the @PathedParams@ if they're
 --   missing from the second.
 pathedParamDefault :: Params -> PathedParams -> PathedParams
-pathedParamDefault def other = undefined
+pathedParamDefault def (PathedParams params ppath) = 
+    PathedParams (H.union params def) ppath
 
 -- | Determine files needed by a @SubMacroExec@.
 smNeededFiles :: MonadReadFile m => SubMacroExec -> DocFileResult m [FilePath]

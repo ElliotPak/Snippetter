@@ -128,6 +128,61 @@ data Content =
   | SubMacro SubMacroExec
   | Doc [Action]
 
+instance Show Content where
+    show c = T.unpack $ conShow c
+
+-- | Determine files needed by a Content.
+conNeededFiles :: MonadReadFile m => Content -> DocFileResult m [FilePath]
+conNeededFiles (Text _) = return []
+conNeededFiles (Snippet s) = return [s]
+conNeededFiles (Transform c _) = conNeededFiles c
+conNeededFiles (TransformError c _) = conNeededFiles c
+conNeededFiles (SubMacro sme) = smNeededFiles sme
+conNeededFiles (Doc d) = docNeededFiles d
+
+-- | Show a piece of Content. This is like @show@ except using @Text@.
+conShow :: Content -> T.Text
+conShow (Text t) = "\"" <> t <> "\""
+conShow (Snippet s) = "Snippet named \"" <> (T.pack s) <> "\""
+conShow (Transform c f) = "Transformation of: " <\> indentFour pre
+    where pre = conShow c
+conShow (TransformError c f) = "Transformation of: " <\> indentFour pre
+    where pre = conShow c
+conShow (SubMacro sme) = smShow sme
+conShow (Doc d) = ""
+
+-- | Preview a piece of Content, similar to @conShow@, except this version
+--   may also read files to determine extra information.
+conPreview :: MonadReadFile m => Content -> DocFileResult m T.Text
+conPreview (Text t) = return $ "\"" <> t <> "\""
+conPreview (Snippet s) = do
+   contents <- fileContentsInDoc s
+   let nameSegment = "Snippet named \"" <> (T.pack s) <> "\" with the contents:"
+   return $ nameSegment <> "\n"
+       <> indentFour contents
+conPreview (Transform c f) = do
+    dryRun <- conPreview c
+    return $ "Transformation of: " <\> indentFour dryRun
+conPreview (TransformError c f) = do
+    dryRun <- conPreview c
+    return $ "Transformation of: " <\> indentFour dryRun
+conPreview (SubMacro sme) = smPreview sme
+conPreview (Doc d) = return ""
+
+-- | Convert a @Content@ to text.
+conEvaluate :: MonadReadFile m => Content -> DocFileResult m T.Text
+conEvaluate (Text t) = return t
+conEvaluate (Snippet s) = fileContentsInDoc s
+conEvaluate (Transform c f) = do
+    sub <- conEvaluate c
+    return $ f sub
+conEvaluate (TransformError c f) = do
+    sub <- conEvaluate c
+    let result = mapLeft (\e -> MiscDocError e) $ f sub
+    liftEither $ result
+conEvaluate (SubMacro sme) = smEvaluate sme
+conEvaluate (Doc d) = docExecute d T.empty
+
 -- | Specifies the @Macro@ to use in a @SubMacro@ and what it should execute
 --   on.
 data SubMacroExec = SubMacroExec {
@@ -136,6 +191,9 @@ data SubMacroExec = SubMacroExec {
   , smParams  :: [PathedParams]
   , smFiles   :: [FilePath]
   } -- deriving (Show, Eq)
+
+instance Show SubMacroExec where
+    show s = T.unpack $ smShow s
 
 -- | Load parameters from all parameter files in a @SubMacroExec@, without
 --   default parameters applied.
@@ -166,14 +224,14 @@ smNeededFiles sm = do
    containing <- docNeededFiles entries
    return $ removeDuplicates $ (smFiles sm) ++ containing
 
--- | Preview a @SubMacroExec@ (see @conPreview@).
-smPreview :: Int -> SubMacroExec -> T.Text
-smPreview indent (SubMacroExec m p pp fp) =
+-- | Show a @SubMacroExec@ (see @conShow@).
+smShow :: SubMacroExec -> T.Text
+smShow (SubMacroExec m p pp fp) =
     undefined
 
--- | Preview a @SubMacroExec@ with file readinf (see @conPreviewDryRun@).
-smPreviewDryRun :: MonadReadFile m => Int -> SubMacroExec -> DocFileResult m T.Text
-smPreviewDryRun indent (SubMacroExec m p pp fp) =
+-- | Preview a @SubMacroExec@ with file reading (see @conPreview@).
+smPreview :: MonadReadFile m => SubMacroExec -> DocFileResult m T.Text
+smPreview (SubMacroExec m p pp fp) =
     undefined
 
 -- | Evaluate a @SubMacroExec@. This is done by running the macro on all
@@ -184,65 +242,12 @@ smEvaluate sme = do
        doc <- liftEither $ macroOnValues (smMacro sme) params
        docExecute doc T.empty
 
--- | Determine files needed by a Content.
-conNeededFiles :: MonadReadFile m => Content -> DocFileResult m [FilePath]
-conNeededFiles (Text _) = return []
-conNeededFiles (Snippet s) = return [s]
-conNeededFiles (Transform c _) = conNeededFiles c
-conNeededFiles (TransformError c _) = conNeededFiles c
-conNeededFiles (SubMacro sme) = smNeededFiles sme
-conNeededFiles (Doc d) = docNeededFiles d
-
--- | Preview a piece of Content. This is like @show@, except with an extra
---   field to indicate indenting.
-conPreview :: Int -> Content -> T.Text
-conPreview indent (Text t) = indentFour indent $ "\"" <> t <> "\""
-conPreview indent (Snippet s) =
-    indentFour indent $ "Snippet named \"" <> (T.pack s) <> "\""
-conPreview indent (Transform c f) = do
-    indentFour indent "Transformation of: " <\> pre
-    where pre = conPreview (indent + 1) c
-conPreview indent (TransformError c f) =
-    indentFour indent "Transformation of: " <\> pre
-    where pre = conPreview (indent + 1) c
-conPreview indent (SubMacro sme) = smPreview indent sme
-conPreview indent (Doc d) = ""
-
--- | Preview a piece of Content, similar to @conPreview@, except this version
---   may also read files to determine extra information.
-conPreviewDryRun :: MonadReadFile m => Int -> Content -> DocFileResult m T.Text
-conPreviewDryRun indent (Text t) = return $ "\"" <> t <> "\""
-conPreviewDryRun indent (Snippet s) = do
-   contents <- fileContentsInDoc s
-   let nameSegment = "Snippet named \"" <> (T.pack s) <> "\" with the contents:"
-   return $ indentFour indent nameSegment <> "\n"
-       <> indentFour (indent + 1) contents
-conPreviewDryRun indent (Transform c f) = do
-    dryRun <- conPreviewDryRun (indent + 1) c
-    return $ indentFour indent "Transformation of: " <\> dryRun
-conPreviewDryRun indent (TransformError c f) = do
-    dryRun <- conPreviewDryRun (indent + 1) c
-    return $ indentFour indent "Transformation of: " <\> dryRun
-conPreviewDryRun indent (SubMacro sme) = smPreviewDryRun indent sme
-conPreviewDryRun indent (Doc d) = return ""
-
--- | Convert a @Content@ to text.
-conEvaluate :: MonadReadFile m => Content -> DocFileResult m T.Text
-conEvaluate (Text t) = return t
-conEvaluate (Snippet s) = fileContentsInDoc s
-conEvaluate (Transform c f) = do
-    sub <- conEvaluate c
-    return $ f sub
-conEvaluate (TransformError c f) = do
-    sub <- conEvaluate c
-    let result = mapLeft (\e -> MiscDocError e) $ f sub
-    liftEither $ result
-conEvaluate (SubMacro sme) = smEvaluate sme
-conEvaluate (Doc d) = docExecute d T.empty
-
 -- | Represents operations that transform text in some way.
 data Action =
     SingleContentAction Content (T.Text -> T.Text -> T.Text) T.Text
+
+instance Show Action where
+    show a = T.unpack $ actShow a
 
 -- | Determine files needed by an @Action@ to execute.
 actNeededFiles :: MonadReadFile m => Action -> DocFileResult m [FilePath]
@@ -254,14 +259,14 @@ actExecute (SingleContentAction c f _) text = do
     evaluated <- conEvaluate c
     return $ f text evaluated
 
-actPreview :: Int -> Action -> T.Text
-actPreview indent (SingleContentAction c _ t) =
-    indentFour indent t <\> conPreview (indent + 1) c
+actShow :: Action -> T.Text
+actShow (SingleContentAction c _ t) =
+    t <\> indentFour (conShow c)
 
-actPreviewDryRun :: MonadReadFile m => Int -> Action -> DocFileResult m T.Text
-actPreviewDryRun indent (SingleContentAction c _ t) = do
-    dryRun <- conPreviewDryRun (indent + 1) c
-    return $ indentFour indent t <\> dryRun
+actPreview :: MonadReadFile m => Action -> DocFileResult m T.Text
+actPreview (SingleContentAction c _ t) = do
+    dryRun <- conPreview c
+    return $ t <\> indentFour dryRun
 
 -- | Public function for creating a @Text@ (the @Content@) from a @Data.Text@.
 text = Text

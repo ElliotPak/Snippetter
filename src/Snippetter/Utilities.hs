@@ -44,9 +44,9 @@ lookupEither def key value =
 indentText :: Int -> T.Text -> T.Text
 indentText ind = (T.intercalate "\n") . map ((<>) $ T.replicate ind " ") . T.lines
 
--- | Indent Text by 4 spaces per indentation level.
-indentFour :: Int -> T.Text -> T.Text
-indentFour ind = indentText (4 * ind)
+-- | Indent Text by 4 spaces.
+indentFour :: T.Text -> T.Text
+indentFour = indentText 4
 
 -- | Add text on a newline if it's more than one line, or add it to the text
 --   otherwise.

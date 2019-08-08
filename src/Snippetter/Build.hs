@@ -242,17 +242,26 @@ conEvaluate (Doc d) = docExecute d T.empty
 
 -- | Represents operations that transform text in some way.
 data Action =
-    SingleContentAction Content (T.Text -> T.Text -> T.Text)
+    SingleContentAction Content (T.Text -> T.Text -> T.Text) T.Text
 
 -- | Determine files needed by an @Action@ to execute.
 actNeededFiles :: MonadReadFile m => Action -> DocFileResult m [FilePath]
-actNeededFiles (SingleContentAction c _) = conNeededFiles c
+actNeededFiles (SingleContentAction c _ _) = conNeededFiles c
 
 -- | Execute the given @Action@ on the specified text.
 actExecute :: MonadReadFile m => Action -> T.Text -> DocFileResult m T.Text
-actExecute (SingleContentAction c f) text = do
+actExecute (SingleContentAction c f _) text = do
     evaluated <- conEvaluate c
     return $ f text evaluated
+
+actPreview :: Int -> Action -> T.Text
+actPreview indent (SingleContentAction c _ t) =
+    indentFour indent t <\> conPreview (indent + 1) c
+
+actPreviewDryRun :: MonadReadFile m => Int -> Action -> DocFileResult m T.Text
+actPreviewDryRun indent (SingleContentAction c _ t) = do
+    dryRun <- conPreviewDryRun (indent + 1) c
+    return $ indentFour indent t <\> dryRun
 
 -- | Public function for creating a @Text@ (the @Content@) from a @Data.Text@.
 text = Text
@@ -273,14 +282,14 @@ subMacroExec = SubMacroExec
 
 -- | Shorthand for creating an @Action@ that adds one @Content@ to text.
 add :: Content -> Action
-add c = SingleContentAction c func
+add c = SingleContentAction c func "Add: "
     where func a b = a <> b
 
 -- | Shorthand for creating an @Action@ that replaces all occurances of some text
 --   with the @Content@.
 replace :: T.Text -> Content -> Action
-replace text c = SingleContentAction c func
-    where func a b = a <> b
+replace text c = SingleContentAction c func $ "Replace \"" <> text <> "\" with: "
+    where func a b = T.replace text b a
 
 -- | Shorthand for creating an @Action@ that adds text.
 addText :: T.Text -> Action

@@ -17,7 +17,7 @@ import System.Console.ANSI
 import System.Directory
 import System.Exit
 import System.IO.Error
-import System.Process
+import System.Process hiding (runProcess)
 
 -- | Possible errors when reading files.
 data FileError
@@ -26,6 +26,7 @@ data FileError
   | AlreadyExists FilePath
   | NoReadPermission FilePath
   | NoWritePermission FilePath
+  | ProcessFailure Int T.Text T.Text
   | OtherFileError FilePath IOError
   deriving (Show, Eq)
 
@@ -75,11 +76,20 @@ class MonadReadFile m =>
     -- | Move the first file to the location of the second.
   moveFile :: FilePath -> FilePath -> ExceptT FileError m ()
     -- | Run the specified process, with the given arguments and stdin input.
-  runProcess :: FilePath -> [T.Text] -> T.Text -> m (ExitCode, T.Text, T.Text)
+  runProcess :: T.Text -> [T.Text] -> T.Text -> m (ExitCode, T.Text, T.Text)
     -- | Notify the user of something.
   notifyUser :: NotifyType -> T.Text -> m ()
     -- | Clear the last notification sent.
   clearNotify :: m ()
+
+-- | Pack @runProcess@ into a FileResult.
+packRunProcess ::
+     MonadWorld m => T.Text -> [T.Text] -> T.Text -> ExceptT FileError m ()
+packRunProcess process args stdin = do
+  (x, y, z) <- lift $ runProcess process args stdin
+  case x of
+    ExitSuccess -> return ()
+    ExitFailure ii -> throwE $ ProcessFailure ii y z
 
 -- | Helper function for IO operations
 tryIO :: IO a -> (a -> b) -> (IOException -> c) -> ExceptT c IO b
@@ -95,17 +105,17 @@ instance MonadReadFile IO where
 
 instance MonadWorld IO where
   writeFile path contents =
-    tryIO (TIO.writeFile path contents) (const ()) (rewrapWriteError path)
-  deleteFile path = tryIO (removeFile path) (const ()) (rewrapWriteError path)
+    tryIO (TIO.writeFile path contents) id (rewrapWriteError path)
+  deleteFile path = tryIO (removeFile path) id (rewrapWriteError path)
   copyFile from to =
-    tryIO (System.Directory.copyFile from to) (const ()) (rewrapWriteError from)
-  moveFile from to =
-    tryIO (renameFile from to) (const ()) (rewrapWriteError from)
+    tryIO (System.Directory.copyFile from to) id (rewrapWriteError from)
+  moveFile from to = tryIO (renameFile from to) id (rewrapWriteError from)
   runProcess process args stdin = do
     let textify (a, b, c) = (a, T.pack b, T.pack c)
+    let process' = T.unpack process
     let args' = map T.unpack args
     let stdin' = T.unpack stdin
-    results <- readProcessWithExitCode process args' stdin'
+    results <- readProcessWithExitCode process' args' stdin'
     return $ textify results
   notifyUser = notifyUserIO
   clearNotify = return ()

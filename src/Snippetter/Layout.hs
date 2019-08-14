@@ -34,6 +34,9 @@ type MacroMap = H.HashMap T.Text Macro
 data Layout
   = LayoutBuild FilePath T.Text Params
   | LayoutCopy FilePath FilePath
+  | LayoutMove FilePath FilePath
+  | LayoutDelete FilePath
+  | LayoutRunProcess T.Text T.Text
   deriving (Show, Eq)
 
 instance Y.FromJSON Layout where
@@ -45,6 +48,10 @@ instance Y.FromJSON Layout where
           LayoutBuild <$> o .: T.pack "output" <*> o .: T.pack "macro-name" <*>
           o .: T.pack "values"
         "copy" -> LayoutCopy <$> o .: T.pack "from" <*> o .: T.pack "to"
+        "move" -> LayoutMove <$> o .: T.pack "from" <*> o .: T.pack "to"
+        "delete" -> LayoutDelete <$> o .: T.pack "file"
+        "run-process" ->
+          LayoutRunProcess <$> o .: T.pack "process" <*> o .: T.pack "stdin"
 
 -- | A Layout value that may have a file path associated with it.
 --   If loaded from a file, the path should be assigned when doing so.
@@ -60,6 +67,9 @@ data PathedLayout =
 data SiteAction
   = Build Macro PathedParams FilePath
   | Copy FilePath FilePath
+  | Move FilePath FilePath
+  | Delete FilePath
+  | Run T.Text [T.Text] T.Text
 
 -- | Retrieves contents of the specific file, and maps possible errors to
 --   @LayoutFileError@s.
@@ -93,28 +103,43 @@ executeSiteAction' (Build m pp fp) = do
   writeFile fp executed `mapResultError` LayoutFileError
 executeSiteAction' (Copy from to) =
   copyFile from to `mapResultError` LayoutFileError
+executeSiteAction' (Move from to) =
+  moveFile from to `mapResultError` LayoutFileError
+executeSiteAction' (Delete file) =
+  deleteFile file `mapResultError` LayoutFileError
+executeSiteAction' (Run process args stdin) =
+  packRunProcess process args stdin `mapResultError` LayoutFileError
+
+siteActionTenses :: SiteAction -> (T.Text, T.Text, T.Text)
+siteActionTenses (Build _ _ _) = ("Building", "built", "build")
+siteActionTenses (Copy _ _) = ("Copying", "copied", "copy")
+siteActionTenses (Move _ _) = ("Moving", "moved", "move")
+siteActionTenses (Delete _) = ("Deleting", "deleted", "delete")
+siteActionTenses (Run _ _ _) = ("Running", "ran", "run")
+
+siteActionName :: SiteAction -> T.Text
+siteActionName (Build _ _ fp) = T.pack fp
+siteActionName (Delete file) = T.pack file
+siteActionName (Copy from to) = T.pack from <> "\" to \"" <> T.pack to
+siteActionName (Move from to) = T.pack from <> "\" to \"" <> T.pack to
+siteActionName (Run process args _) = process <> " " <> T.intercalate " " args
 
 executeSiteAction :: MonadWorld m => SiteAction -> m ()
-executeSiteAction sa@(Copy to from) = do
-  let name = T.pack from <> "\" to \"" <> T.pack to
-  notifyProgress $ "Copying \"" <> name <> "\"..."
+executeSiteAction sa = do
+  let name = siteActionName sa
+  let (tenseA, tenseB, tenseC) = siteActionTenses sa
+  notifyProgress $ tenseA <> " \"" <> name <> "\"..."
   result <- runExceptT $ executeSiteAction' sa
   case result of
-    Right r -> notifySuccess $ "Successfully copied \"" <> name <> "\"."
-    Left l -> notifySuccess $ "Failed to copy \"" <> name <> "\":"
-executeSiteAction sa@(Build m pp fp) = do
-  let name = T.pack fp
-  notifyProgress $ "Building \"" <> name <> "\"..."
-  result <- runExceptT $ executeSiteAction' sa
-  case result of
-    Right r -> notifySuccess $ "Successfully built \"" <> name <> "\"."
-    Left l -> notifySuccess $ "Failed to build \"" <> name <> "\":"
+    Right r ->
+      notifySuccess $ "Successfully " <> tenseB <> " \"" <> name <> "\"."
+    Left l -> notifyFailure $ "Failed to " <> tenseC <> " \"" <> name <> "\":"
 
 executeLayoutFile :: MonadWorld m => FilePath -> H.HashMap T.Text Macro -> m ()
 executeLayoutFile path map = do
   actions <- runExceptT $ loadSiteActions path map
   case actions of
-    Right r -> mapM_ executeSiteAction' r
+    Right r -> mapM_ executeSiteAction r
     Left l -> notifyFailure $ "Failed to load \"" <> T.pack path <> "\"."
 
 -- | Converts a @PathedLayout@ to a @SiteAction@, when given a mapping of
@@ -129,6 +154,13 @@ layoutToAction map (PathedLayout layout input) = ll input layout
       macro <- mapLeft LayoutDocError $ lookupEither err macroName map
       return $ Build macro mp output
     ll path (LayoutCopy from to) = return $ Copy from to
+    ll path (LayoutMove from to) = return $ Move from to
+    ll path (LayoutDelete file) = return $ Delete file
+    ll path (LayoutRunProcess process stdin) = return $ Run pHead pTail stdin
+      where
+        split = T.splitOn " " process
+        pHead = head split
+        pTail = tail split
 
 -- | Loads a list of @SiteAction@ from a file, when given a mapping of strings
 --   to macros

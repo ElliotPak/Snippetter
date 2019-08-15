@@ -24,7 +24,22 @@ data DocError
   | DocYamlError YamlError
   | MissingMacro T.Text
   | MiscDocError T.Text
-  deriving (Show, Eq)
+  deriving (Eq)
+
+instance Show DocError where
+  show (DocMacroError e fp) =
+    "While executing a macro with parameters from " <>
+    f <> ":\n" <> indentFourStr (show e)
+    where
+      f =
+        case fp of
+          Nothing -> "a Haskell source file"
+          Just a -> "the YAML file \"" <> a <> "\""
+  show (DocYamlError e) = "While decoding YAML:\n" <> indentFourStr (show e)
+  show (DocFileError e) = "While reading a file:\n" <> indentFourStr (show e)
+  show (MissingMacro t) =
+    "The macro \"" <> T.unpack t <> "\" was missing from the macro map."
+  show (MiscDocError t) = "An error occured:" <> T.unpack t
 
 -- | The result a function that builds a page and can read files.
 type DocFileResult m a = ExceptT DocError m a
@@ -58,7 +73,12 @@ data MacroError
   = AbsentKey T.Text
   | WrongKeyType T.Text
   | MiscMacroError T.Text
-  deriving (Show, Eq)
+  deriving (Eq)
+
+instance Show MacroError where
+  show (AbsentKey t) = "The key \"" <> T.unpack t <> "\" was missing."
+  show (WrongKeyType t) = "The key \"" <> T.unpack t <> "\" was the wrong type."
+  show (MiscMacroError t) = "An error occured: " <> T.unpack t
 
 -- | Retrieves contents of the specific file, and maps possible errors to
 --   @DocFileError@s.

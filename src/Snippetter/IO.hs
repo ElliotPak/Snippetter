@@ -1,5 +1,3 @@
-{-# LANGUAGE StandaloneDeriving #-}
-
 module Snippetter.IO where
 
 import Control.Applicative
@@ -28,14 +26,40 @@ data FileError
   | NoWritePermission FilePath
   | ProcessFailure Int T.Text T.Text
   | OtherFileError FilePath IOError
-  deriving (Show, Eq)
+  deriving (Eq)
+
+instance Show FileError where
+  show (NotFound f) = "\"" <> f <> "\" couldn't be found."
+  show (IsInUse f) = "\"" <> f <> "\" is already in use."
+  show (AlreadyExists f) =
+    "\"" <> f <> "\" can't be modified as it already exists."
+  show (NoReadPermission f) =
+    "You don't have read permissions for \"" <> f <> "\"."
+  show (NoWritePermission f) =
+    "You don't have write permissions for \"" <> f <> "\"."
+  show (ProcessFailure i stdout stderr) =
+    "The process failed with exit code " <>
+    show i <>
+    ".\nStandard output:\n" <>
+    T.unpack (indentFour stdout) <>
+    "\nStandard error:\n" <> T.unpack (indentFour stderr)
+  show (OtherFileError f e) =
+    "The following error occurred in \"" <>
+    file <> "\":" <> show (ioeGetErrorType e)
+    where
+      file = unRight $ ioeGetFileName e <|> Just f
 
 -- | Possible errors when decoding YAML from a file.
 data YamlError
   = YamlFileError FileError
   | InvalidYamlFormat FilePath
   | OtherYamlError FilePath T.Text
-  deriving (Show, Eq)
+  deriving (Eq)
+
+instance Show YamlError where
+  show (YamlFileError e) = "While reading a file:\n" <> indentFourStr (show e)
+  show (InvalidYamlFormat f) = "The YAML wasn't in the correct format."
+  show (OtherYamlError f t) = "A YAML error occured: " <> T.unpack t
 
 -- | The result a function that reads files.
 type FileResult m a = ExceptT FileError m a
@@ -152,7 +176,6 @@ rewrapReadError defaultPath e
   | isAlreadyInUseError e = IsInUse path
   | otherwise = OtherFileError path e
   where
-    unRight (Just x) = x
     path = unRight $ ioeGetFileName e <|> Just defaultPath
 
 -- | Wrap an IOException in a FileError. Used when modifying files.
@@ -164,7 +187,6 @@ rewrapWriteError defaultPath e
   | isAlreadyInUseError e = IsInUse path
   | otherwise = OtherFileError path e
   where
-    unRight (Just x) = x
     path = unRight $ ioeGetFileName e <|> Just defaultPath
 
 -- | Decodes an Aeson-parsable ADT from the supplied text.

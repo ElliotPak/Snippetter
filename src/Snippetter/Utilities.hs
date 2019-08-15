@@ -14,6 +14,10 @@ import qualified Data.Text as T
 import Prelude hiding (lookup)
 import System.FilePath
 
+unRight :: Maybe a -> a
+unRight (Just x) = x
+unRight _ = error "unRight on left value"
+
 -- | Maps the Left value of an Either.
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f (Left x) = Left $ f x
@@ -44,9 +48,15 @@ lookupEither def key value =
 indentText :: Int -> T.Text -> T.Text
 indentText ind = T.intercalate "\n" . map ((<>) $ T.replicate ind " ") . T.lines
 
+indentStr :: Int -> String -> String
+indentStr ind = unlines . map ((<>) $ replicate ind ' ') . lines
+
 -- | Indent Text by 4 spaces.
 indentFour :: T.Text -> T.Text
 indentFour = indentText 4
+
+indentFourStr :: String -> String
+indentFourStr = indentStr 4
 
 -- | Add text on a newline if it's more than one line, or add it to the text
 --   otherwise.

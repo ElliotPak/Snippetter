@@ -19,7 +19,13 @@ data LayoutError
   | LayoutYamlError YamlError
   | LayoutFileError FileError
   | MiscLayoutError T.Text
-  deriving (Show, Eq)
+  deriving (Eq)
+
+instance Show LayoutError where
+  show (LayoutDocError e) = "While building a page:\n" <> indentFourStr (show e)
+  show (LayoutYamlError e) = "While decoding YAML:\n" <> indentFourStr (show e)
+  show (LayoutFileError e) = "While reading a file:\n" <> indentFourStr (show e)
+  show (MiscLayoutError t) = "An error occured:" <> T.unpack t
 
 -- | The result of a function that makes/executes a @SiteAction@.
 type LayoutResult a = Either LayoutError a
@@ -133,7 +139,10 @@ executeSiteAction sa = do
   case result of
     Right r ->
       notifySuccess $ "Successfully " <> tenseB <> " \"" <> name <> "\"."
-    Left l -> notifyFailure $ "Failed to " <> tenseC <> " \"" <> name <> "\":"
+    Left l ->
+      notifyFailure $
+      "Failed to " <>
+      tenseC <> " \"" <> name <> "\":\n" <> indentFour (T.pack $ show l)
 
 executeLayoutFile :: MonadWorld m => FilePath -> H.HashMap T.Text Macro -> m ()
 executeLayoutFile path map = do

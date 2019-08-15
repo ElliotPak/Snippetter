@@ -6,6 +6,7 @@ import Control.Monad.Except
 import Control.Monad.Trans
 import Control.Monad.Trans.Except
 import Data.Aeson.Types (Object, Value(Object, String))
+import qualified Data.ByteString.Char8 as B
 import qualified Data.HashMap.Strict as H
 import qualified Data.Text as T
 import Data.Yaml
@@ -255,13 +256,42 @@ smNeededFiles sm = do
   containing <- docNeededFiles entries
   return $ removeDuplicates $ smFiles sm ++ containing
 
+previewParams :: Params -> T.Text
+previewParams params
+  | H.null params = ""
+  | otherwise = (T.pack . B.unpack . Y.encode) params
+
+previewPathedParams :: PathedParams -> T.Text
+previewPathedParams (PathedParams params _) = previewParams params
+
 -- | Show a @SubMacroExec@ (see @conShow@).
 smShow :: SubMacroExec -> T.Text
-smShow (SubMacroExec m p pp fp) = undefined
+smShow (SubMacroExec m def pp f) = tDefaults <> tParams <> tFile
+  where
+    tDefaults
+      | H.null def = ""
+      | otherwise =
+        indentFour ("Default values:\n" <> indentFour (previewParams def))
+    tParams
+      | null pp = ""
+      | otherwise =
+        indentFour
+          ("Execution with these params:\n" <>
+           indentFour (T.unlines $ map previewPathedParams pp))
+    tFile
+      | null f = ""
+      | otherwise =
+        indentFour
+          ("Execution on these files:\n" <>
+           indentFour (T.unlines . (map T.pack) $ f))
 
 -- | Preview a @SubMacroExec@ with file reading (see @conPreview@).
 smPreview :: MonadReadFile m => SubMacroExec -> DocFileResult m T.Text
-smPreview (SubMacroExec m p pp fp) = undefined
+smPreview sm = do
+  allParams <- smAllParams sm
+  return $
+    "Execution with these params:\n" <>
+    indentFour (T.unlines $ map previewPathedParams allParams)
 
 -- | Evaluate a @SubMacroExec@. This is done by running the macro on all
 --   specified parameters, and on all parameters in the specified files.

@@ -252,6 +252,24 @@ smDefault2 = singleSubMacro basicMacro params2 [makePathed params1] []
 
 smDefaultNoParams = singleSubMacro basicMacro params1 [] []
 
+smComplexShow1 = singleSubMacro basicMacro params1 [] ["foo", "bar"]
+
+smComplexShow2 = singleSubMacro basicMacro H.empty [] ["foo", "bar"]
+
+smComplexShow3 =
+  singleSubMacro
+    basicMacro
+    params1
+    [makePathed params2, makePathed params3]
+    ["foo", "bar"]
+
+smComplexShow4 =
+  singleSubMacro
+    basicMacro
+    H.empty
+    [makePathed params2, makePathed params3]
+    ["foo", "bar"]
+
 testSubMacroFiles =
   [ testCase "Empty, Macro uses no files" $
     retPassIO (conNeededFiles smEmpty) []
@@ -274,41 +292,57 @@ testSubMacroFiles =
   ]
 
 testSubMacroShow =
-  [ testCase "Empty, Macro uses no files" $ conShow smEmpty @?= ""
-  , testCase "Empty, Macro uses the same file constantly" $
-    conShow smEmptySameFile @?= ""
-  , testCase "Empty, Macro uses file specified in params" $
-    conShow smEmptyFile @?= ""
-  , testCase "Single params, macro uses no files" $ conShow smSingle @?= ""
-  , testCase "Single params, macro uses same file constantly" $
-    conShow smSingleSameFile @?= ""
-  , testCase "Single params, macro uses file specified in params" $
-    conShow smSingleFile @?= ""
-  , testCase "Multiple params, macro uses no files" $ conShow smMultiple @?= ""
-  , testCase "Multiple params, macro uses same file constantly" $
-    conShow smMultipleSameFile @?= ""
-  , testCase "Multiple params, macro uses file specified in params" $
-    conShow smMultipleFile @?= ""
+  [ testCase "No params" $ conShow smEmpty @?= "Macro executions:"
+  , testCase "Single params" $
+    conShow smSingle @?=
+    "Macro executions:\n    Execution with these params:\n      - title: bar"
+  , testCase "Multiple params" $
+    conShow smMultiple @?=
+    "Macro executions:\n    Execution with these params:\n      - title: foo\n      - title: bar\n      - title: baz"
+  , testCase "Complex show 1" $
+    conShow smComplexShow1 @?=
+    "Macro executions:\n    Default values:\n      - title: foo\n    Execution on these files:\n      - foo\n      - bar"
+  , testCase "Complex show 2" $
+    conShow smComplexShow2 @?=
+    "Macro executions:\n    Execution on these files:\n      - foo\n      - bar"
+  , testCase "Complex show 3" $
+    conShow smComplexShow3 @?=
+    "Macro executions:\n    Default values:\n      - title: foo\n    Execution with these params:\n      - title: bar\n      - title: baz\nExecution on these files:\n      - foo\n      - bar"
+  , testCase "Complex show 4" $
+    conShow smComplexShow4 @?=
+    "Macro executions:\n    Execution with these params:\n      - title: bar\n      - title: baz\nExecution on these files:\n      - foo\n      - bar"
   ]
 
 testSubMacroPreview =
-  [ testCase "Empty, Macro uses no files" $ retPassIO (conPreview smEmpty) ""
-  , testCase "Empty, Macro uses the same file constantly" $
-    retPassIO (conPreview smEmptySameFile) ""
-  , testCase "Empty, Macro uses file specified in params" $
-    retPassIO (conPreview smEmptyFile) ""
-  , testCase "Single params, macro uses no files" $
-    retPassIO (conPreview smSingle) ""
-  , testCase "Single params, macro uses same file constantly" $
-    retPassIO (conPreview smSingleSameFile) ""
-  , testCase "Single params, macro uses file specified in params" $
-    retPassIO (conPreview smSingleFile) ""
-  , testCase "Multiple params, macro uses no files" $
-    retPassIO (conPreview smMultiple) ""
-  , testCase "Multiple params, macro uses same file constantly" $
-    retPassIO (conPreview smMultipleSameFile) ""
-  , testCase "Multiple params, macro uses file specified in params" $
-    retPassIO (conPreview smMultipleFile) ""
+  [ testCase "No params" $ retPassIO (conPreview smEmpty) "Macro executions:"
+  , testCase "Single params" $
+    retPassIO
+      (conPreview smSingle)
+      "Macro executions:\n    Execution with these params:\n      - title: bar"
+  , testCase "Multiple params" $
+    retPassIO
+      (conPreview smMultiple)
+      "Macro executions:\n    Execution with these params:\n      - title: foo\n      - title: bar\n      - title: baz"
+  , testCase "Complex preview 1" $
+    retPassFileRead
+      "- title: from-file"
+      (conPreview smComplexShow1)
+      "Macro executions:\n    Execution with these params:\n      - title: from-file\n      - title: from-file"
+  , testCase "Complex preview 2" $
+    retPassFileRead
+      "- title: from-file"
+      (conPreview smComplexShow2)
+      "Macro executions:\n    Execution with these params:\n      - title: from-file\n      - title: from-file"
+  , testCase "Complex preview 3" $
+    retPassFileRead
+      "- title: from-file"
+      (conPreview smComplexShow3)
+      "Macro executions:\n    Execution with these params:\n      - title: bar\n      - title: baz\n      - title: from-file\n      - title: from-file"
+  , testCase "Complex preview 4" $
+    retPassFileRead
+      "- title: from-file"
+      (conPreview smComplexShow4)
+      "Macro executions:\n    Execution with these params:\n      - title: bar\n      - title: baz\n      - title: from-file\n      - title: from-file"
   ]
 
 testSubMacroEvaluate =

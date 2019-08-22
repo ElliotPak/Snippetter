@@ -4,7 +4,6 @@
 --   of the library, and some are intended to be used when creating Macros.
 module Snippetter.Utilities where
 
-import Control.Monad.Except
 import Control.Monad.Trans.Except
 import Data.Aeson.Types (Object, Value(Object, String))
 import Data.HashMap.Strict (HashMap, lookup)
@@ -48,8 +47,16 @@ lookupEither def key value =
 indentText :: Int -> T.Text -> T.Text
 indentText ind = T.intercalate "\n" . map ((<>) $ T.replicate ind " ") . T.lines
 
+-- | Indent a String by a specified amount of spaces.
 indentStr :: Int -> String -> String
 indentStr ind = unlines . map ((<>) $ replicate ind ' ') . lines
+
+indentWithListMarker :: T.Text -> T.Text
+indentWithListMarker text = indentText 2 (h <> t)
+  where
+    lines = T.lines text
+    t = T.unlines $ (map (indentText 2) . tail) lines
+    h = "- " <> head lines <> "\n"
 
 -- | Indent Text by 4 spaces.
 indentFour :: T.Text -> T.Text
@@ -67,6 +74,17 @@ addSingleLineText base single
 
 -- | Infix operator for addSingleLineText.
 a <\> b = addSingleLineText a b
+
+-- | Append text with a newline as long as neither text is null
+appendWithNewLine :: T.Text -> T.Text -> T.Text
+appendWithNewLine aa bb
+  | aa == "" && bb == "" = ""
+  | aa == "" = bb
+  | bb == "" = aa
+  | otherwise = aa <> "\n" <> bb
+
+-- | Infix operator for appendWithNewLine.
+a <\\> b = appendWithNewLine a b
 
 -- | Remove duplicates from a list.
 --   Taken from https://stackoverflow.com/a/16108856

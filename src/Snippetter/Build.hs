@@ -180,7 +180,7 @@ conShow (Transform c f) = "Transformation of: " <\> indentFour pre
 conShow (TransformError c f) = "Transformation of: " <\> indentFour pre
   where
     pre = conShow c
-conShow (SubMacro sme) = smShow sme
+conShow (SubMacro sme) = "Macro executions:" <\\> indentFour (smShow sme)
 conShow (Doc d) = ""
 
 -- | Preview a piece of @Content@, similar to @conShow@, except files may be read
@@ -197,7 +197,9 @@ conPreview (Transform c f) = do
 conPreview (TransformError c f) = do
   dryRun <- conPreview c
   return $ "Transformation of: " <\> indentFour dryRun
-conPreview (SubMacro sme) = smPreview sme
+conPreview (SubMacro sme) = do
+  previewed <- smPreview sme
+  return $ "Macro executions:" <\\> indentFour previewed
 conPreview (Doc d) = return ""
 
 -- | Convert a @Content@ to text.
@@ -259,39 +261,42 @@ smNeededFiles sm = do
 previewParams :: Params -> T.Text
 previewParams params
   | H.null params = ""
-  | otherwise = (T.pack . B.unpack . Y.encode) params
+  | otherwise = (indentWithListMarker . T.pack . B.unpack . Y.encode) params
 
 previewPathedParams :: PathedParams -> T.Text
 previewPathedParams (PathedParams params _) = previewParams params
 
 -- | Show a @SubMacroExec@ (see @conShow@).
 smShow :: SubMacroExec -> T.Text
-smShow (SubMacroExec m def pp f) = tDefaults <> tParams <> tFile
+smShow (SubMacroExec m def pp f) = tDefaults <\\> tParams <\\> tFile
   where
+    tDefaults :: T.Text
+    tParams :: T.Text
+    tFile :: T.Text
     tDefaults
       | H.null def = ""
-      | otherwise =
-        indentFour ("Default values:\n" <> indentFour (previewParams def))
+      | otherwise = "Default values:\n" <> previewParams def
     tParams
       | null pp = ""
       | otherwise =
-        indentFour
-          ("Execution with these params:\n" <>
-           indentFour (T.unlines $ map previewPathedParams pp))
+        ("Execution with these params:\n" :: T.Text) <>
+        T.unlines (map previewPathedParams pp)
     tFile
       | null f = ""
       | otherwise =
-        indentFour
-          ("Execution on these files:\n" <>
-           indentFour (T.unlines . (map T.pack) $ f))
+        ("Execution on these files:\n" :: T.Text) <>
+        T.unlines (map (indentWithListMarker . T.pack) f)
 
 -- | Preview a @SubMacroExec@ with file reading (see @conPreview@).
 smPreview :: MonadReadFile m => SubMacroExec -> DocFileResult m T.Text
 smPreview sm = do
   allParams <- smAllParams sm
-  return $
-    "Execution with these params:\n" <>
-    indentFour (T.unlines $ map previewPathedParams allParams)
+  case allParams of
+    [] -> return ""
+    _ ->
+      return $
+      ("Execution with these params:\n" :: T.Text) <>
+      T.unlines (map previewPathedParams allParams)
 
 -- | Evaluate a @SubMacroExec@. This is done by running the macro on all
 --   specified parameters, and on all parameters in the specified files.

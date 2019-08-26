@@ -1,18 +1,18 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Tests.Actions (tests) where
+module Tests.Actions
+  ( tests
+  ) where
 
+import Control.Monad.Trans.Except
+import qualified Data.Text as T
+import Snippetter.Build
 import Test.Tasty
 import Test.Tasty.HUnit
 import Tests.Helpers
-import Snippetter.Build
-import Control.Monad.Trans.Except
-import qualified Data.Text as T
 
-tests =
-    [ testGroup "Add" testAdd
-    , testGroup "Replace" testReplace
-    ]
+tests = [testGroup "Add" testAdd, testGroup "Replace" testReplace]
 
 testAdd = []
+
 testReplace = []

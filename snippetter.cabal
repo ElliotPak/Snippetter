@@ -48,3 +48,9 @@ test-suite test-snippetter
                   unordered-containers >=0.2 && <0.3,
                   yaml >=0.11 && <0.12,
                   bytestring >=0.10 && <0.11
+  other-modules:  Tests.Helpers,
+                  Tests.Actions,
+                  Tests.Content,
+                  Tests.Utilities,
+                  Tests.MiscBuild,
+                  Tests.SubBuilder

@@ -270,9 +270,6 @@ previewPathedParams (PathedParams params _) = previewParams params
 smShow :: SubMacroExec -> T.Text
 smShow (SubMacroExec m def pp f) = tDefaults <\\> tParams <\\> tFile
   where
-    tDefaults :: T.Text
-    tParams :: T.Text
-    tFile :: T.Text
     tDefaults
       | H.null def = ""
       | otherwise = "Default values:\n" <> previewParams def
@@ -280,12 +277,12 @@ smShow (SubMacroExec m def pp f) = tDefaults <\\> tParams <\\> tFile
       | null pp = ""
       | otherwise =
         ("Execution with these params:\n" :: T.Text) <>
-        T.unlines (map previewPathedParams pp)
+        T.intercalate "\n" (map previewPathedParams pp)
     tFile
       | null f = ""
       | otherwise =
         ("Execution on these files:\n" :: T.Text) <>
-        T.unlines (map (indentWithListMarker . T.pack) f)
+        T.intercalate "\n" (map (indentWithListMarker . T.pack) f)
 
 -- | Preview a @SubMacroExec@ with file reading (see @conPreview@).
 smPreview :: MonadReadFile m => SubMacroExec -> DocFileResult m T.Text

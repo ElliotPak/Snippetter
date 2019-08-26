@@ -11,9 +11,7 @@ extra-source-files:  README.md
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     Snippetter,
-                       Snippetter.MacroTest,
-                       Snippetter.Helpers,
+  exposed-modules:     Snippetter.Helpers,
                        Snippetter.Utilities,
                        Snippetter.IO,
                        Snippetter.Layout,

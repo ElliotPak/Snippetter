@@ -1,3 +1,5 @@
+-- | Contains a bunch of functions related to file IO and interaction with the
+-- outside world, including typeclasses that use it.
 module Snippetter.IO where
 
 import Control.Applicative
@@ -71,11 +73,8 @@ type YamlResult m a = ExceptT YamlError m a
 --   It can also be used for mocking purposes.
 class Monad m =>
       MonadReadFile m
-    -- | Retrieves contents of the specified file. Any errors are represented
-    --   by a FileResult.
   where
   getFileContents :: FilePath -> ExceptT FileError m T.Text
-    -- | Determines if the specified file exists.
   fileExists :: FilePath -> m Bool
 
 -- | Represents different types of user notification.
@@ -90,20 +89,13 @@ data NotifyType
 --   exists for mocking purposes.
 class MonadReadFile m =>
       MonadWorld m
-    -- | Write text to a file.
   where
   writeFile :: FilePath -> T.Text -> ExceptT FileError m ()
-    -- | Delete the given file.
   deleteFile :: FilePath -> ExceptT FileError m ()
-    -- | Copy the first file to the location of the second.
   copyFile :: FilePath -> FilePath -> ExceptT FileError m ()
-    -- | Move the first file to the location of the second.
   moveFile :: FilePath -> FilePath -> ExceptT FileError m ()
-    -- | Run the specified process, with the given arguments and stdin input.
   runProcess :: T.Text -> [T.Text] -> T.Text -> m (ExitCode, T.Text, T.Text)
-    -- | Notify the user of something.
   notifyUser :: NotifyType -> T.Text -> m ()
-    -- | Clear the last notification sent.
   clearNotify :: m ()
 
 -- | Pack @runProcess@ into a FileResult.
@@ -156,6 +148,7 @@ notifySuccess = notifyUser Success
 notifyFailure :: MonadWorld m => T.Text -> m ()
 notifyFailure = notifyUser Failure
 
+-- | Notifies the user by printing to the console.
 notifyUserIO :: NotifyType -> T.Text -> IO ()
 notifyUserIO nt text = do
   let lookup' a l = fromJust $ lookup a l

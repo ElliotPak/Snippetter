@@ -13,6 +13,7 @@ import qualified Data.Text as T
 import Prelude hiding (lookup)
 import System.FilePath
 
+-- | Retrieves the value from a @Maybe@ if it's @Just@, and errors otherwise.
 unRight :: Maybe a -> a
 unRight (Just x) = x
 unRight _ = error "unRight on left value"
@@ -51,6 +52,8 @@ indentText ind = T.intercalate "\n" . map ((<>) $ T.replicate ind " ") . T.lines
 indentStr :: Int -> String -> String
 indentStr ind = unlines . map ((<>) $ replicate ind ' ') . lines
 
+-- | Like @indentFour@, except the first line is indented with "  - " instead
+-- of 4 spaces of 4 spaces.
 indentWithListMarker :: T.Text -> T.Text
 indentWithListMarker text = indentText 2 (h <> t)
   where
@@ -58,10 +61,11 @@ indentWithListMarker text = indentText 2 (h <> t)
     t = T.unlines $ (map (indentText 2) . tail) lines
     h = "- " <> head lines <> "\n"
 
--- | Indent Text by 4 spaces.
+-- | Indent a Text by 4 spaces.
 indentFour :: T.Text -> T.Text
 indentFour = indentText 4
 
+-- | Indent a String by 4 spaces.
 indentFourStr :: String -> String
 indentFourStr = indentStr 4
 

@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+-- | Contains functions/types related to loading and executing layout files.
 module Snippetter.Layout where
 
 import Control.Monad.Except
@@ -33,8 +34,8 @@ type LayoutResult a = Either LayoutError a
 -- | The result of a function that makes/executes a @SiteAction@ and can read files.
 type LayoutFileResult m a = ExceptT LayoutError m a
 
--- | A map of @T.Text@ to @Macro@s.
-type MacroMap = H.HashMap T.Text Macro
+-- | A map of @T.Text@ to @Builder@s.
+type BuilderMap = H.HashMap T.Text Builder
 
 -- | Site actions as immediately loaded from a YAML file.
 data Layout
@@ -50,8 +51,8 @@ instance Y.FromJSON Layout where
     Y.withObject "LayoutFile" $ \o -> do
       kind <- o .: T.pack "type"
       case T.unpack kind of
-        "macro" ->
-          LayoutBuild <$> o .: T.pack "output" <*> o .: T.pack "macro-name" <*>
+        "builder" ->
+          LayoutBuild <$> o .: T.pack "output" <*> o .: T.pack "builder-name" <*>
           o .: T.pack "values"
         "copy" -> LayoutCopy <$> o .: T.pack "from" <*> o .: T.pack "to"
         "move" -> LayoutMove <$> o .: T.pack "from" <*> o .: T.pack "to"
@@ -71,7 +72,7 @@ data PathedLayout =
 
 -- | Describes an action taken to build the site.
 data SiteAction
-  = Build Macro PathedParams FilePath
+  = Build Builder PathedParams FilePath
   | Copy FilePath FilePath
   | Move FilePath FilePath
   | Delete FilePath
@@ -103,9 +104,10 @@ loadLayoutFile path = do
   y <- yamlAsLayout path
   return $ map (addPath path) y
 
+-- | Actually executes the @SiteAction@ and returns the result for it.
 executeSiteAction' :: MonadWorld m => SiteAction -> LayoutFileResult m ()
 executeSiteAction' (Build m pp fp) = do
-  executed <- executeMacro m pp `mapResultError` LayoutDocError
+  executed <- executeBuilder m pp `mapResultError` LayoutDocError
   writeFile fp executed `mapResultError` LayoutFileError
 executeSiteAction' (Copy from to) =
   copyFile from to `mapResultError` LayoutFileError
@@ -116,6 +118,7 @@ executeSiteAction' (Delete file) =
 executeSiteAction' (Run process args stdin) =
   packRunProcess process args stdin `mapResultError` LayoutFileError
 
+-- | Get the tense to be used in status messages for each @SiteAction@.
 siteActionTenses :: SiteAction -> (T.Text, T.Text, T.Text)
 siteActionTenses (Build _ _ _) = ("Building", "built", "build")
 siteActionTenses (Copy _ _) = ("Copying", "copied", "copy")
@@ -123,6 +126,7 @@ siteActionTenses (Move _ _) = ("Moving", "moved", "move")
 siteActionTenses (Delete _) = ("Deleting", "deleted", "delete")
 siteActionTenses (Run _ _ _) = ("Running", "ran", "run")
 
+-- | Get the subject to be used in status messages for each @SiteAction@.
 siteActionName :: SiteAction -> T.Text
 siteActionName (Build _ _ fp) = T.pack fp
 siteActionName (Delete file) = T.pack file
@@ -130,6 +134,7 @@ siteActionName (Copy from to) = T.pack from <> "\" to \"" <> T.pack to
 siteActionName (Move from to) = T.pack from <> "\" to \"" <> T.pack to
 siteActionName (Run process args _) = process <> " " <> T.intercalate " " args
 
+-- | Execute a @SiteAction@ and notify the user of the results.
 executeSiteAction :: MonadWorld m => SiteAction -> m ()
 executeSiteAction sa = do
   let name = siteActionName sa
@@ -144,7 +149,9 @@ executeSiteAction sa = do
       "Failed to " <>
       tenseC <> " \"" <> name <> "\":\n" <> indentFour (T.pack $ show l)
 
-executeLayoutFile :: MonadWorld m => FilePath -> H.HashMap T.Text Macro -> m ()
+-- | Load a layout file and execute all @SiteAction@s resulting from it.
+executeLayoutFile ::
+     MonadWorld m => FilePath -> H.HashMap T.Text Builder -> m ()
 executeLayoutFile path map = do
   actions <- runExceptT $ loadSiteActions path map
   case actions of
@@ -152,16 +159,16 @@ executeLayoutFile path map = do
     Left l -> notifyFailure $ "Failed to load \"" <> T.pack path <> "\"."
 
 -- | Converts a @PathedLayout@ to a @SiteAction@, when given a mapping of
---   strings to macros.
+--   strings to builders.
 layoutToAction ::
-     H.HashMap T.Text Macro -> PathedLayout -> Either LayoutError SiteAction
+     H.HashMap T.Text Builder -> PathedLayout -> Either LayoutError SiteAction
 layoutToAction map (PathedLayout layout input) = ll input layout
   where
-    ll path (LayoutBuild output macroName contents) = do
+    ll path (LayoutBuild output builderName contents) = do
       let mp = PathedParams contents input
-      let err = MissingMacro macroName
-      macro <- mapLeft LayoutDocError $ lookupEither err macroName map
-      return $ Build macro mp output
+      let err = MissingBuilder builderName
+      builder <- mapLeft LayoutDocError $ lookupEither err builderName map
+      return $ Build builder mp output
     ll path (LayoutCopy from to) = return $ Copy from to
     ll path (LayoutMove from to) = return $ Move from to
     ll path (LayoutDelete file) = return $ Delete file
@@ -172,11 +179,11 @@ layoutToAction map (PathedLayout layout input) = ll input layout
         pTail = tail split
 
 -- | Loads a list of @SiteAction@ from a file, when given a mapping of strings
---   to macros
+--   to builders
 loadSiteActions ::
      MonadReadFile m
   => FilePath
-  -> H.HashMap T.Text Macro
+  -> H.HashMap T.Text Builder
   -> LayoutFileResult m [SiteAction]
 loadSiteActions path map = do
   layout <- loadLayoutFile path
@@ -184,5 +191,6 @@ loadSiteActions path map = do
 
 -- | Determine the files required to evaluate a @SiteAction@.
 filesNeeded :: MonadReadFile m => SiteAction -> LayoutFileResult m [FilePath]
-filesNeeded (Build m mp f) = filesForMacro m mp `mapResultError` LayoutDocError
+filesNeeded (Build m mp f) =
+  filesForBuilder m mp `mapResultError` LayoutDocError
 filesNeeded (Copy from to) = return [from]

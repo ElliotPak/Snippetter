@@ -1,5 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+-- | Contains functions/types related to builders and building files, including
+-- content, actions, the functions that manipulate those, and more.
 module Snippetter.Build where
 
 import Control.Monad.Except
@@ -20,16 +22,16 @@ type Doc = [Action]
 
 -- | Possible errors when a page is being built.
 data DocError
-  = DocMacroError MacroError (Maybe FilePath)
+  = DocBuilderError BuilderError (Maybe FilePath)
   | DocFileError FileError
   | DocYamlError YamlError
-  | MissingMacro T.Text
+  | MissingBuilder T.Text
   | MiscDocError T.Text
   deriving (Eq)
 
 instance Show DocError where
-  show (DocMacroError e fp) =
-    "While executing a macro with parameters from " <>
+  show (DocBuilderError e fp) =
+    "While executing a builder with parameters from " <>
     f <> ":\n" <> indentFourStr (show e)
     where
       f =
@@ -38,8 +40,8 @@ instance Show DocError where
           Just a -> "the YAML file \"" <> a <> "\""
   show (DocYamlError e) = "While decoding YAML:\n" <> indentFourStr (show e)
   show (DocFileError e) = "While reading a file:\n" <> indentFourStr (show e)
-  show (MissingMacro t) =
-    "The macro \"" <> T.unpack t <> "\" was missing from the macro map."
+  show (MissingBuilder t) =
+    "The builder \"" <> T.unpack t <> "\" was missing from the builder map."
   show (MiscDocError t) = "An error occured:" <> T.unpack t
 
 -- | The result a function that builds a page and can read files.
@@ -49,15 +51,15 @@ type DocFileResult m a = ExceptT DocError m a
 --   require some other monad.
 type DocResult = Either DocError Doc
 
--- | The result of a @Macro@ function.
-type MacroResult = Either MacroError Doc
+-- | The result of a @Builder@ function.
+type BuilderResult = Either BuilderError Doc
 
--- | Shorthand for a macro's parameters.
+-- | Shorthand for a builder's parameters.
 -- Identical to the type of an Aeson object.
 type Params = H.HashMap T.Text Value
 
--- | Shorthand for a @Macro@'s type signature.
-type Macro = Params -> MacroResult
+-- | Shorthand for a @Builder@'s type signature.
+type Builder = Params -> BuilderResult
 
 -- | A @Params@ value that may have a file path associated with it.
 --   If loaded from a file, the path should be assigned when doing so.
@@ -69,17 +71,17 @@ data PathedParams =
     }
   deriving (Show, Eq)
 
--- | Things that can go wrong while a macro is being run.
-data MacroError
+-- | Things that can go wrong while a builder is being run.
+data BuilderError
   = AbsentKey T.Text
   | WrongKeyType T.Text
-  | MiscMacroError T.Text
+  | MiscBuilderError T.Text
   deriving (Eq)
 
-instance Show MacroError where
+instance Show BuilderError where
   show (AbsentKey t) = "The key \"" <> T.unpack t <> "\" was missing."
   show (WrongKeyType t) = "The key \"" <> T.unpack t <> "\" was the wrong type."
-  show (MiscMacroError t) = "An error occured: " <> T.unpack t
+  show (MiscBuilderError t) = "An error occured: " <> T.unpack t
 
 -- | Retrieves contents of the specific file, and maps possible errors to
 --   @DocFileError@s.
@@ -116,38 +118,39 @@ paramsFromFile file = do
   let addPath x = PathedParams x $ Just file
   return $ map addPath values
 
--- | Create a @Doc@ by running a @Macro@, using the values of a YAML collection
+-- | Create a @Doc@ by running a @Builder@, using the values of a YAML collection
 --   as its parameters.
-macroOnEntryFile :: MonadReadFile m => Macro -> FilePath -> DocFileResult m Doc
-macroOnEntryFile macro path = do
+builderWithParamsFile ::
+     MonadReadFile m => Builder -> FilePath -> DocFileResult m Doc
+builderWithParamsFile builder path = do
   fromFile <- paramsFromFile path
-  liftEither $ macroOnValues macro fromFile
+  liftEither $ builderWithParams builder fromFile
 
--- | Create a @Doc@ by running a @Macro@ consecutively, using each entry in the
+-- | Create a @Doc@ by running a @Builder@ consecutively, using each entry in the
 --   PathedParams list as parameters.
-macroOnValues :: Macro -> [PathedParams] -> DocResult
-macroOnValues m v = do
+builderWithParams :: Builder -> [PathedParams] -> DocResult
+builderWithParams m v = do
   mapped <- mapM (buildDoc m) v
   return $ concat mapped
 
--- | Build a @Doc@ by running a @Macro@ with the given parameters.
-buildDoc :: Macro -> PathedParams -> DocResult
+-- | Build a @Doc@ by running a @Builder@ with the given parameters.
+buildDoc :: Builder -> PathedParams -> DocResult
 buildDoc m (PathedParams params path) =
-  mapLeft (convertMacroError path) $ m params
+  mapLeft (convertBuilderError path) $ m params
   where
-    convertMacroError path err = DocMacroError err path
+    convertBuilderError path err = DocBuilderError err path
 
--- | Evaluates the given @Macro@ to text with the given parameters.
-executeMacro ::
-     MonadReadFile m => Macro -> PathedParams -> DocFileResult m T.Text
-executeMacro m pp = do
+-- | Evaluates the given @Builder@ to text with the given parameters.
+executeBuilder ::
+     MonadReadFile m => Builder -> PathedParams -> DocFileResult m T.Text
+executeBuilder m pp = do
   doc <- liftEither $ buildDoc m pp
   docExecute doc T.empty
 
--- | Determines files needed to run the @Macro@ with the given parameters.
-filesForMacro ::
-     MonadReadFile m => Macro -> PathedParams -> DocFileResult m [FilePath]
-filesForMacro m pp = liftEither (buildDoc m pp) >>= docNeededFiles
+-- | Determines files needed to run the @Builder@ with the given parameters.
+filesForBuilder ::
+     MonadReadFile m => Builder -> PathedParams -> DocFileResult m [FilePath]
+filesForBuilder m pp = liftEither (buildDoc m pp) >>= docNeededFiles
 
 -- | Represents operations that evaluate to text.
 data Content
@@ -155,7 +158,7 @@ data Content
   | Snippet FilePath
   | Transform Content (T.Text -> T.Text)
   | TransformError Content (T.Text -> Either T.Text T.Text)
-  | SubMacro SubMacroExec
+  | SubBuilder SubBuilderExec
   | Doc [Action]
 
 instance Show Content where
@@ -167,7 +170,7 @@ conNeededFiles (Text _) = return []
 conNeededFiles (Snippet s) = return [s]
 conNeededFiles (Transform c _) = conNeededFiles c
 conNeededFiles (TransformError c _) = conNeededFiles c
-conNeededFiles (SubMacro sme) = smNeededFiles sme
+conNeededFiles (SubBuilder sme) = smNeededFiles sme
 conNeededFiles (Doc d) = docNeededFiles d
 
 -- | Show a piece of @Content@. This is like @show@ except it uses @Text@.
@@ -180,7 +183,7 @@ conShow (Transform c f) = "Transformation of: " <\> indentFour pre
 conShow (TransformError c f) = "Transformation of: " <\> indentFour pre
   where
     pre = conShow c
-conShow (SubMacro sme) = "Macro executions:" <\\> indentFour (smShow sme)
+conShow (SubBuilder sme) = "Builder executions:" <\\> indentFour (smShow sme)
 conShow (Doc d) = ""
 
 -- | Preview a piece of @Content@, similar to @conShow@, except files may be read
@@ -197,9 +200,9 @@ conPreview (Transform c f) = do
 conPreview (TransformError c f) = do
   dryRun <- conPreview c
   return $ "Transformation of: " <\> indentFour dryRun
-conPreview (SubMacro sme) = do
+conPreview (SubBuilder sme) = do
   previewed <- smPreview sme
-  return $ "Macro executions:" <\\> indentFour previewed
+  return $ "Builder executions:" <\\> indentFour previewed
 conPreview (Doc d) = return ""
 
 -- | Convert a @Content@ to text.
@@ -212,32 +215,33 @@ conEvaluate (Transform c f) = do
 conEvaluate (TransformError c f) = do
   sub <- conEvaluate c
   liftEither $ mapLeft MiscDocError $ f sub
-conEvaluate (SubMacro sme) = smEvaluate sme
+conEvaluate (SubBuilder sme) = smEvaluate sme
 conEvaluate (Doc d) = docExecute d T.empty
 
--- | Specifies the @Macro@ to use in a @SubMacro@ and what it should execute
+-- | Specifies the @Builder@ to use in a @SubBuilder@ and what it should execute
 --   on.
-data SubMacroExec =
-  SubMacroExec
-    { smMacro :: Macro
+data SubBuilderExec =
+  SubBuilderExec
+    { smBuilder :: Builder
     , smDefault :: Params
     , smParams :: [PathedParams]
     , smFiles :: [FilePath]
     } -- deriving (Show, Eq)
 
-instance Show SubMacroExec where
+instance Show SubBuilderExec where
   show s = T.unpack $ smShow s
 
--- | Load parameters from all parameter files in a @SubMacroExec@, without
+-- | Load parameters from all parameter files in a @SubBuilderExec@, without
 --   default parameters applied.
 smFileParams ::
-     MonadReadFile m => SubMacroExec -> DocFileResult m [PathedParams]
+     MonadReadFile m => SubBuilderExec -> DocFileResult m [PathedParams]
 smFileParams sm = do
   params <- mapM paramsFromFile (smFiles sm)
   return $ concat params
 
--- | Load all parameters in a @SubMacroExec@, with default parameters applied.
-smAllParams :: MonadReadFile m => SubMacroExec -> DocFileResult m [PathedParams]
+-- | Load all parameters in a @SubBuilderExec@, with default parameters applied.
+smAllParams ::
+     MonadReadFile m => SubBuilderExec -> DocFileResult m [PathedParams]
 smAllParams sm = do
   fileParams <- smFileParams sm
   let allParams = smParams sm ++ fileParams
@@ -250,42 +254,44 @@ pathedParamDefault :: Params -> PathedParams -> PathedParams
 pathedParamDefault def (PathedParams params ppath) =
   PathedParams (H.union params def) ppath
 
--- | Determine files needed by a @SubMacroExec@.
-smNeededFiles :: MonadReadFile m => SubMacroExec -> DocFileResult m [FilePath]
+-- | Determine files needed by a @SubBuilderExec@.
+smNeededFiles :: MonadReadFile m => SubBuilderExec -> DocFileResult m [FilePath]
 smNeededFiles sm = do
   params <- smAllParams sm
-  entries <- liftEither $ macroOnValues (smMacro sm) params
+  entries <- liftEither $ builderWithParams (smBuilder sm) params
   containing <- docNeededFiles entries
   return $ removeDuplicates $ smFiles sm ++ containing
 
-previewParams :: Params -> T.Text
-previewParams params
+-- | Get a textual representation of a @Params@.
+showParams :: Params -> T.Text
+showParams params
   | H.null params = ""
   | otherwise = (indentWithListMarker . T.pack . B.unpack . Y.encode) params
 
-previewPathedParams :: PathedParams -> T.Text
-previewPathedParams (PathedParams params _) = previewParams params
+-- | Get a textual representation of the @Params@ within a @PathedParams@.
+showPathedParams :: PathedParams -> T.Text
+showPathedParams (PathedParams params _) = showParams params
 
--- | Show a @SubMacroExec@ (see @conShow@).
-smShow :: SubMacroExec -> T.Text
-smShow (SubMacroExec m def pp f) = tDefaults <\\> tParams <\\> tFile
+-- | Show a @SubBuilderExec@ (see @conShow@).
+smShow :: SubBuilderExec -> T.Text
+smShow (SubBuilderExec m def pp f) = tDefaults <\\> tParams <\\> tFile
   where
     tDefaults
       | H.null def = ""
-      | otherwise = "Default values:\n" <> previewParams def
+      | otherwise = "Default values:\n" <> showParams def
     tParams
       | null pp = ""
       | otherwise =
         ("Execution with these params:\n" :: T.Text) <>
-        T.intercalate "\n" (map previewPathedParams pp)
+        T.intercalate "\n" (map showPathedParams pp)
     tFile
       | null f = ""
       | otherwise =
         ("Execution on these files:\n" :: T.Text) <>
         T.intercalate "\n" (map (indentWithListMarker . T.pack) f)
 
--- | Preview a @SubMacroExec@ with file reading (see @conPreview@).
-smPreview :: MonadReadFile m => SubMacroExec -> DocFileResult m T.Text
+-- | Preview a @SubBuilderExec@ with file reading (see @conPreview@).
+smPreview :: MonadReadFile m => SubBuilderExec -> DocFileResult m T.Text
 smPreview sm = do
   allParams <- smAllParams sm
   case allParams of
@@ -293,14 +299,14 @@ smPreview sm = do
     _ ->
       return $
       ("Execution with these params:\n" :: T.Text) <>
-      T.unlines (map previewPathedParams allParams)
+      T.unlines (map showPathedParams allParams)
 
--- | Evaluate a @SubMacroExec@. This is done by running the macro on all
+-- | Evaluate a @SubBuilderExec@. This is done by running the builder on all
 --   specified parameters, and on all parameters in the specified files.
-smEvaluate :: MonadReadFile m => SubMacroExec -> DocFileResult m T.Text
+smEvaluate :: MonadReadFile m => SubBuilderExec -> DocFileResult m T.Text
 smEvaluate sme = do
   params <- smAllParams sme
-  doc <- liftEither $ macroOnValues (smMacro sme) params
+  doc <- liftEither $ builderWithParams (smBuilder sme) params
   docExecute doc T.empty
 
 -- | Represents operations that transform text in some way.
@@ -349,11 +355,11 @@ transformError = TransformError
 -- | Public function for creating a @Doc@.
 doc = Doc
 
--- | Public function for creating a @SubMacro@.
-subMacro = SubMacro
+-- | Public function for creating a @SubBuilder@.
+subBuilder = SubBuilder
 
--- | Public function for creating a @SubMacroExec@.
-subMacroExec = SubMacroExec
+-- | Public function for creating a @SubBuilderExec@.
+subBuilderExec = SubBuilderExec
 
 -- | Shorthand for creating an @Action@ that adds one @Content@ to text.
 add :: Content -> Action
@@ -378,10 +384,10 @@ addText t = add $ text t
 replaceText :: T.Text -> T.Text -> Action
 replaceText t1 t2 = replace t1 $ text t2
 
--- | Public function for creating a @SubMacro@ with just one @SubMacroExec@.
-singleSubMacro :: Macro -> Params -> [PathedParams] -> [FilePath] -> Content
-singleSubMacro m p pp fp = SubMacro $ SubMacroExec m p pp fp
+-- | Public function for creating a @SubBuilder@ with just one @SubBuilderExec@.
+singleSubBuilder :: Builder -> Params -> [PathedParams] -> [FilePath] -> Content
+singleSubBuilder m p pp fp = SubBuilder $ SubBuilderExec m p pp fp
 
--- | Shorthand for creating a @SubMacro@ that executes the macro on one file.
-macroOnFile :: Macro -> FilePath -> Content
-macroOnFile m f = subMacro $ SubMacroExec m H.empty [] [f]
+-- | Shorthand for creating a @SubBuilder@ that executes the builder on one file.
+subBuilderOnFile :: Builder -> FilePath -> Content
+subBuilderOnFile m f = subBuilder $ SubBuilderExec m H.empty [] [f]

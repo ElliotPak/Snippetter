@@ -1,5 +1,5 @@
 -- | Contains a bunch of helper functions, intended to be used when creating
---   Macros.
+--   Builders.
 module Snippetter.Helpers where
 
 import Data.Aeson.Types (Object, Value(Object, String))
@@ -16,7 +16,7 @@ import System.FilePath
 --   function.
 --   Evaluates to seperate errors if the key is missing or can't be converted
 --   to a specific type.
-lookupParams :: (Value -> Maybe a) -> T.Text -> Params -> Either MacroError a
+lookupParams :: (Value -> Maybe a) -> T.Text -> Params -> Either BuilderError a
 lookupParams get key map = do
   thing <- lookupEither (AbsentKey key) keyT map
   maybeToEither (WrongKeyType key) (get thing)
@@ -42,11 +42,11 @@ unObject (Object o) = Just o
 unObject _ = Nothing
 
 -- | Shorthand for @lookupParams unText@.
-lookupText :: T.Text -> Params -> Either MacroError T.Text
+lookupText :: T.Text -> Params -> Either BuilderError T.Text
 lookupText = lookupParams unText
 
 -- | Shorthand for @lookupParams unObject@.
-lookupObject :: T.Text -> Params -> Either MacroError Params
+lookupObject :: T.Text -> Params -> Either BuilderError Params
 lookupObject = lookupParams unObject
 
 -- | Shorthand for @lookupDefault unObject@.

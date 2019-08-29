@@ -9,7 +9,8 @@ import Control.Monad.Trans
 import Control.Monad.Trans.Except
 import Data.Aeson.Types (Object, Value(Object, String))
 import qualified Data.ByteString.Char8 as B
-import qualified Data.HashMap.Strict as H
+import qualified Data.HashMap.Strict as HM
+import qualified Data.HashSet as HS
 import qualified Data.Text as T
 import Data.Yaml
 import qualified Data.Yaml as Y
@@ -54,10 +55,6 @@ type DocResult = Either DocError Doc
 -- | The result of a @Builder@ function.
 type BuilderResult = Either BuilderError Doc
 
--- | Shorthand for a builder's parameters.
--- Identical to the type of an Aeson object.
-type Params = H.HashMap T.Text Value
-
 -- | Shorthand for a @Builder@'s type signature.
 type Builder = Params -> BuilderResult
 
@@ -90,11 +87,14 @@ fileContentsInDoc path = getFileContents path `mapResultError` mapping
   where
     mapping = DocFileError
 
+-- | Shorthand for @HashSet FilePath@.
+type FilePathSet = HS.HashSet FilePath
+
 -- | Determine files needed by a @Doc@.
-docNeededFiles :: MonadReadFile m => Doc -> DocFileResult m [FilePath]
+docNeededFiles :: MonadReadFile m => Doc -> DocFileResult m FilePathSet
 docNeededFiles doc = do
   mapped <- mapM actNeededFiles doc
-  return $ concat mapped
+  return $ HS.unions mapped
 
 -- | Execute all @Actions@ within a @Doc@.
 docExecute :: MonadReadFile m => Doc -> T.Text -> DocFileResult m T.Text
@@ -149,7 +149,7 @@ executeBuilder m pp = do
 
 -- | Determines files needed to run the @Builder@ with the given parameters.
 filesForBuilder ::
-     MonadReadFile m => Builder -> PathedParams -> DocFileResult m [FilePath]
+     MonadReadFile m => Builder -> PathedParams -> DocFileResult m FilePathSet
 filesForBuilder m pp = liftEither (buildDoc m pp) >>= docNeededFiles
 
 -- | Represents operations that evaluate to text.
@@ -165,9 +165,9 @@ instance Show Content where
   show c = T.unpack $ conShow c
 
 -- | Determine files needed by a Content.
-conNeededFiles :: MonadReadFile m => Content -> DocFileResult m [FilePath]
-conNeededFiles (Text _) = return []
-conNeededFiles (Snippet s) = return [s]
+conNeededFiles :: MonadReadFile m => Content -> DocFileResult m FilePathSet
+conNeededFiles (Text _) = return HS.empty
+conNeededFiles (Snippet s) = return $ HS.singleton s
 conNeededFiles (Transform c _) = conNeededFiles c
 conNeededFiles (TransformError c _) = conNeededFiles c
 conNeededFiles (SubBuilder sme) = smNeededFiles sme
@@ -225,7 +225,7 @@ data SubBuilderExec =
     { smBuilder :: Builder
     , smDefault :: Params
     , smParams :: [PathedParams]
-    , smFiles :: [FilePath]
+    , smFiles :: FilePathSet
     } -- deriving (Show, Eq)
 
 instance Show SubBuilderExec where
@@ -236,7 +236,7 @@ instance Show SubBuilderExec where
 smFileParams ::
      MonadReadFile m => SubBuilderExec -> DocFileResult m [PathedParams]
 smFileParams sm = do
-  params <- mapM paramsFromFile (smFiles sm)
+  params <- mapM paramsFromFile (HS.toList $ smFiles sm)
   return $ concat params
 
 -- | Load all parameters in a @SubBuilderExec@, with default parameters applied.
@@ -252,20 +252,21 @@ smAllParams sm = do
 --   missing from the second.
 pathedParamDefault :: Params -> PathedParams -> PathedParams
 pathedParamDefault def (PathedParams params ppath) =
-  PathedParams (H.union params def) ppath
+  PathedParams (paramUnion params def) ppath
 
 -- | Determine files needed by a @SubBuilderExec@.
-smNeededFiles :: MonadReadFile m => SubBuilderExec -> DocFileResult m [FilePath]
+smNeededFiles ::
+     MonadReadFile m => SubBuilderExec -> DocFileResult m FilePathSet
 smNeededFiles sm = do
   params <- smAllParams sm
   entries <- liftEither $ builderWithParams (smBuilder sm) params
   containing <- docNeededFiles entries
-  return $ removeDuplicates $ smFiles sm ++ containing
+  return $ smFiles sm <> containing
 
 -- | Get a textual representation of a @Params@.
 showParams :: Params -> T.Text
 showParams params
-  | H.null params = ""
+  | nullParams params = ""
   | otherwise = (indentWithListMarker . T.pack . B.unpack . Y.encode) params
 
 -- | Get a textual representation of the @Params@ within a @PathedParams@.
@@ -277,7 +278,7 @@ smShow :: SubBuilderExec -> T.Text
 smShow (SubBuilderExec m def pp f) = tDefaults <\\> tParams <\\> tFile
   where
     tDefaults
-      | H.null def = ""
+      | nullParams def = ""
       | otherwise = "Default values:\n" <> showParams def
     tParams
       | null pp = ""
@@ -288,7 +289,9 @@ smShow (SubBuilderExec m def pp f) = tDefaults <\\> tParams <\\> tFile
       | null f = ""
       | otherwise =
         ("Execution on these files:\n" :: T.Text) <>
-        T.intercalate "\n" (map (indentWithListMarker . T.pack) f)
+        T.intercalate
+          "\n"
+          (HS.toList (HS.map (indentWithListMarker . T.pack) f))
 
 -- | Preview a @SubBuilderExec@ with file reading (see @conPreview@).
 smPreview :: MonadReadFile m => SubBuilderExec -> DocFileResult m T.Text
@@ -317,7 +320,7 @@ instance Show Action where
   show a = T.unpack $ actShow a
 
 -- | Determine files needed by an @Action@ to execute.
-actNeededFiles :: MonadReadFile m => Action -> DocFileResult m [FilePath]
+actNeededFiles :: MonadReadFile m => Action -> DocFileResult m FilePathSet
 actNeededFiles (SingleContentAction c _ _) = conNeededFiles c
 
 -- | Execute the given @Action@ on the specified text.
@@ -385,9 +388,11 @@ replaceText :: T.Text -> T.Text -> Action
 replaceText t1 t2 = replace t1 $ text t2
 
 -- | Public function for creating a @SubBuilder@ with just one @SubBuilderExec@.
-singleSubBuilder :: Builder -> Params -> [PathedParams] -> [FilePath] -> Content
+singleSubBuilder ::
+     Builder -> Params -> [PathedParams] -> FilePathSet -> Content
 singleSubBuilder m p pp fp = SubBuilder $ SubBuilderExec m p pp fp
 
 -- | Shorthand for creating a @SubBuilder@ that executes the builder on one file.
 subBuilderOnFile :: Builder -> FilePath -> Content
-subBuilderOnFile m f = subBuilder $ SubBuilderExec m H.empty [] [f]
+subBuilderOnFile m f =
+  subBuilder $ SubBuilderExec m emptyParams [] (HS.singleton f)

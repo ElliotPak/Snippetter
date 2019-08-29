@@ -7,11 +7,29 @@ module Snippetter.Utilities where
 import Control.Monad.Trans.Except
 import Data.Aeson.Types (Object, Value(Object, String))
 import Data.HashMap.Strict (HashMap, lookup)
+import qualified Data.HashMap.Strict as HM
 import Data.Hashable
 import Data.List.Split
 import qualified Data.Text as T
 import Prelude hiding (lookup)
 import System.FilePath
+
+-- | Shorthand for a builder's parameters.
+-- Identical to the type of an Aeson object.
+type Params = HM.HashMap T.Text Value
+
+-- | Creates an empty Params.
+emptyParams :: Params
+emptyParams = HM.empty
+
+-- | Check if a Params is empty.
+nullParams :: Params -> Bool
+nullParams = HM.null
+
+-- | The union of two Params. If a key occurs in both, the valu from the first
+-- will be the value in the result.
+paramUnion :: Params -> Params -> Params
+paramUnion = HM.union
 
 -- | Retrieves the value from a @Maybe@ if it's @Just@, and errors otherwise.
 unRight :: Maybe a -> a

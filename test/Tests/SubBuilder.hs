@@ -6,13 +6,13 @@ module Tests.SubBuilder
 
 import Control.Monad.Trans.Except
 import qualified Data.ByteString.Char8 as B
-import qualified Data.HashMap.Strict as H
+import qualified Data.HashMap.Strict as HM
+import qualified Data.HashSet as HS
 import qualified Data.Text as T
 import qualified Data.Yaml as Y
 import Snippetter.Build
 import Snippetter.Helpers
-import Snippetter.IO
-import Snippetter.Layout
+import Snippetter.Utilities
 import Test.Tasty
 import Test.Tasty.HUnit
 import Tests.Helpers
@@ -52,83 +52,86 @@ params3 = fromText "title: baz"
 
 paramsNoTitle = fromText "something: test"
 
-smEmpty = singleSubBuilder basicBuilder H.empty [] []
+smEmpty = singleSubBuilder basicBuilder emptyParams [] HS.empty
 
-smEmptySameFile = singleSubBuilder sameFileBuilder H.empty [] []
+smEmptySameFile = singleSubBuilder sameFileBuilder emptyParams [] HS.empty
 
-smEmptyFile = singleSubBuilder fileBuilder H.empty [] []
+smEmptyFile = singleSubBuilder fileBuilder emptyParams [] HS.empty
 
-smSingle = singleSubBuilder basicBuilder H.empty [makePathed params2] []
+smSingle =
+  singleSubBuilder basicBuilder emptyParams [makePathed params2] HS.empty
 
-smSingleFile = singleSubBuilder fileBuilder H.empty [makePathed params2] []
+smSingleFile =
+  singleSubBuilder fileBuilder emptyParams [makePathed params2] HS.empty
 
 smSingleSameFile =
-  singleSubBuilder sameFileBuilder H.empty [makePathed params2] []
+  singleSubBuilder sameFileBuilder emptyParams [makePathed params2] HS.empty
 
 smMultiple =
   singleSubBuilder
     basicBuilder
-    H.empty
+    emptyParams
     [makePathed params1, makePathed params2, makePathed params3]
-    []
+    HS.empty
 
 smMultipleFile =
   singleSubBuilder
     fileBuilder
-    H.empty
+    emptyParams
     [makePathed params1, makePathed params2, makePathed params3]
-    []
+    HS.empty
 
 smMultipleSameFile =
   singleSubBuilder
     sameFileBuilder
-    H.empty
+    emptyParams
     [makePathed params1, makePathed params2, makePathed params3]
-    []
+    HS.empty
 
-smDefault = singleSubBuilder basicBuilder params1 [makePathed paramsNoTitle] []
+smDefault =
+  singleSubBuilder basicBuilder params1 [makePathed paramsNoTitle] HS.empty
 
-smDefault2 = singleSubBuilder basicBuilder params2 [makePathed params1] []
+smDefault2 = singleSubBuilder basicBuilder params2 [makePathed params1] HS.empty
 
-smDefaultNoParams = singleSubBuilder basicBuilder params1 [] []
+smDefaultNoParams = singleSubBuilder basicBuilder params1 [] HS.empty
 
-smComplexShow1 = singleSubBuilder basicBuilder params1 [] ["foo", "bar"]
+smComplexShow1 =
+  singleSubBuilder basicBuilder params1 [] $ HS.fromList ["foo", "bar"]
 
-smComplexShow2 = singleSubBuilder basicBuilder H.empty [] ["foo", "bar"]
+smComplexShow2 =
+  singleSubBuilder basicBuilder emptyParams [] $ HS.fromList ["foo", "bar"]
 
 smComplexShow3 =
-  singleSubBuilder
-    basicBuilder
-    params1
-    [makePathed params2, makePathed params3]
-    ["foo", "bar"]
+  singleSubBuilder basicBuilder params1 [makePathed params2, makePathed params3] $
+  HS.fromList ["foo", "bar"]
 
 smComplexShow4 =
   singleSubBuilder
     basicBuilder
-    H.empty
-    [makePathed params2, makePathed params3]
-    ["foo", "bar"]
+    emptyParams
+    [makePathed params2, makePathed params3] $
+  HS.fromList ["foo", "bar"]
 
 testSubBuilderFiles =
   [ testCase "Empty, Builder uses no files" $
-    retPassIO (conNeededFiles smEmpty) []
+    retPassIO (conNeededFiles smEmpty) HS.empty
   , testCase "Empty, Builder uses the same file constantly" $
-    retPassIO (conNeededFiles smEmptySameFile) []
+    retPassIO (conNeededFiles smEmptySameFile) HS.empty
   , testCase "Empty, Builder uses file specified in params" $
-    retPassIO (conNeededFiles smEmptyFile) []
+    retPassIO (conNeededFiles smEmptyFile) HS.empty
   , testCase "Single params, macro uses no files" $
-    retPassIO (conNeededFiles smSingle) []
+    retPassIO (conNeededFiles smSingle) HS.empty
   , testCase "Single params, macro uses same file constantly" $
-    retPassIO (conNeededFiles smSingleSameFile) ["foo"]
+    retPassIO (conNeededFiles smSingleSameFile) $ HS.fromList ["foo"]
   , testCase "Single params, macro uses file specified in params" $
-    retPassIO (conNeededFiles smSingleFile) ["bar"]
+    retPassIO (conNeededFiles smSingleFile) $ HS.fromList ["bar"]
   , testCase "Multiple params, macro uses no files" $
-    retPassIO (conNeededFiles smMultiple) []
+    retPassIO (conNeededFiles smMultiple) HS.empty
   , testCase "Multiple params, macro uses same file constantly" $
-    retPassIO (conNeededFiles smMultipleSameFile) ["foo"]
+    retPassIO (conNeededFiles smMultipleSameFile) $ HS.fromList ["foo"]
   , testCase "Multiple params, macro uses file specified in params" $
-    retPassIO (conNeededFiles smMultipleFile) ["foo", "bar", "baz"]
+    retPassIO (conNeededFiles smMultipleFile) $
+    HS.fromList ["foo", "bar", "baz"]
   ]
 
 testSubBuilderShow =
@@ -141,16 +144,16 @@ testSubBuilderShow =
     "Builder executions:\n    Execution with these params:\n      - title: foo\n      - title: bar\n      - title: baz"
   , testCase "Complex show 1" $
     conShow smComplexShow1 @?=
-    "Builder executions:\n    Default values:\n      - title: foo\n    Execution on these files:\n      - foo\n      - bar"
+    "Builder executions:\n    Default values:\n      - title: foo\n    Execution on these files:\n      - bar\n      - foo"
   , testCase "Complex show 2" $
     conShow smComplexShow2 @?=
-    "Builder executions:\n    Execution on these files:\n      - foo\n      - bar"
+    "Builder executions:\n    Execution on these files:\n      - bar\n      - foo"
   , testCase "Complex show 3" $
     conShow smComplexShow3 @?=
-    "Builder executions:\n    Default values:\n      - title: foo\n    Execution with these params:\n      - title: bar\n      - title: baz\n    Execution on these files:\n      - foo\n      - bar"
+    "Builder executions:\n    Default values:\n      - title: foo\n    Execution with these params:\n      - title: bar\n      - title: baz\n    Execution on these files:\n      - bar\n      - foo"
   , testCase "Complex show 4" $
     conShow smComplexShow4 @?=
-    "Builder executions:\n    Execution with these params:\n      - title: bar\n      - title: baz\n    Execution on these files:\n      - foo\n      - bar"
+    "Builder executions:\n    Execution with these params:\n      - title: bar\n      - title: baz\n    Execution on these files:\n      - bar\n      - foo"
   ]
 
 testSubBuilderPreview =

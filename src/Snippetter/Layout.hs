@@ -5,7 +5,8 @@ module Snippetter.Layout where
 
 import Control.Monad.Except
 import Control.Monad.Trans.Except
-import qualified Data.HashMap.Strict as H
+import qualified Data.HashMap.Strict as HM
+import qualified Data.HashSet as HS
 import qualified Data.Text as T
 import Data.Yaml ((.:))
 import qualified Data.Yaml as Y
@@ -35,7 +36,7 @@ type LayoutResult a = Either LayoutError a
 type LayoutFileResult m a = ExceptT LayoutError m a
 
 -- | A map of @T.Text@ to @Builder@s.
-type BuilderMap = H.HashMap T.Text Builder
+type BuilderMap = HM.HashMap T.Text Builder
 
 -- | Site actions as immediately loaded from a YAML file.
 data Layout
@@ -150,8 +151,7 @@ executeSiteAction sa = do
       tenseC <> " \"" <> name <> "\":\n" <> indentFour (T.pack $ show l)
 
 -- | Load a layout file and execute all @SiteAction@s resulting from it.
-executeLayoutFile ::
-     MonadWorld m => FilePath -> H.HashMap T.Text Builder -> m ()
+executeLayoutFile :: MonadWorld m => FilePath -> BuilderMap -> m ()
 executeLayoutFile path map = do
   actions <- runExceptT $ loadSiteActions path map
   case actions of
@@ -160,8 +160,7 @@ executeLayoutFile path map = do
 
 -- | Converts a @PathedLayout@ to a @SiteAction@, when given a mapping of
 --   strings to builders.
-layoutToAction ::
-     H.HashMap T.Text Builder -> PathedLayout -> Either LayoutError SiteAction
+layoutToAction :: BuilderMap -> PathedLayout -> Either LayoutError SiteAction
 layoutToAction map (PathedLayout layout input) = ll input layout
   where
     ll path (LayoutBuild output builderName contents) = do
@@ -183,14 +182,8 @@ layoutToAction map (PathedLayout layout input) = ll input layout
 loadSiteActions ::
      MonadReadFile m
   => FilePath
-  -> H.HashMap T.Text Builder
+  -> BuilderMap
   -> LayoutFileResult m [SiteAction]
 loadSiteActions path map = do
   layout <- loadLayoutFile path
   liftEither $ mapM (layoutToAction map) layout
-
--- | Determine the files required to evaluate a @SiteAction@.
-filesNeeded :: MonadReadFile m => SiteAction -> LayoutFileResult m [FilePath]
-filesNeeded (Build m mp f) =
-  filesForBuilder m mp `mapResultError` LayoutDocError
-filesNeeded (Copy from to) = return [from]

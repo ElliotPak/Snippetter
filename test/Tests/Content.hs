@@ -6,7 +6,7 @@ module Tests.Content
 
 import Control.Monad.Trans.Except
 import qualified Data.ByteString.Char8 as B
-import qualified Data.HashMap.Strict as H
+import qualified Data.HashSet as HS
 import qualified Data.Text as T
 import qualified Data.Yaml as Y
 import Snippetter.Build
@@ -33,7 +33,7 @@ testText =
   , testCase "Resolving" testTextEvaluate
   ]
 
-testTextFiles = retPassIO (conNeededFiles $ text $ T.pack "test") []
+testTextFiles = retPassIO (conNeededFiles $ text $ T.pack "test") HS.empty
 
 testTextShow = conShow (text $ T.pack "test") @?= (T.pack "\"test\"")
 
@@ -50,7 +50,8 @@ testSnippet =
   , testGroup "Resolving" testSnippetEvaluate
   ]
 
-testSnippetFiles = retPassIO (conNeededFiles $ Snippet "foo") ["foo"]
+testSnippetFiles =
+  retPassIO (conNeededFiles $ Snippet "foo") $ HS.fromList ["foo"]
 
 testSnippetShow = conShow (snippet "foo") @?= (T.pack "Snippet named \"foo\"")
 
@@ -89,9 +90,9 @@ transFile = transform (snippet "foo") $ \text -> text <> (T.pack " baz")
 
 testTransformFiles =
   [ testCase "Child doesn't depend on anything" $
-    retPassIO (conNeededFiles transNoFile) []
+    retPassIO (conNeededFiles transNoFile) HS.empty
   , testCase "Child depends on a file" $
-    retPassIO (conNeededFiles transFile) ["foo"]
+    retPassIO (conNeededFiles transFile) $ HS.fromList ["foo"]
   ]
 
 testTransformShow =
@@ -136,13 +137,13 @@ transErrFileFail = transformError (Snippet "foo") $ \text -> Left $ T.pack "idk"
 
 testTransformErrorFiles =
   [ testCase "Child doesn't depend on anything" $
-    retPassIO (conNeededFiles transErrNoFile) []
+    retPassIO (conNeededFiles transErrNoFile) HS.empty
   , testCase "Child depends on a file" $
-    retPassIO (conNeededFiles transErrFile) ["foo"]
+    retPassIO (conNeededFiles transErrFile) $ HS.fromList ["foo"]
   , testCase "Child fails and doesn't depend on anything" $
-    retPassIO (conNeededFiles transErrNoFileFail) []
+    retPassIO (conNeededFiles transErrNoFileFail) HS.empty
   , testCase "Child fails and depends on a file" $
-    retPassIO (conNeededFiles transErrFileFail) ["foo"]
+    retPassIO (conNeededFiles transErrFileFail) $ HS.fromList ["foo"]
   ]
 
 testTransformErrorShow =

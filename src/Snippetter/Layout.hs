@@ -150,13 +150,20 @@ executeSiteAction sa = do
       "Failed to " <>
       tenseC <> " \"" <> name <> "\":\n" <> indentFour (T.pack $ show l)
 
--- | Load a layout file and execute all @SiteAction@s resulting from it.
-executeLayoutFile :: MonadWorld m => FilePath -> BuilderMap -> m ()
-executeLayoutFile path map = do
+actOnLayoutFile ::
+     MonadWorld m => (SiteAction -> m ()) -> FilePath -> BuilderMap -> m ()
+actOnLayoutFile act path map = do
   actions <- runExceptT $ loadSiteActions path map
   case actions of
-    Right r -> mapM_ executeSiteAction r
-    Left l -> notifyFailure $ "Failed to load \"" <> T.pack path <> "\"."
+    Right r -> mapM_ act r
+    Left l ->
+      notifyFailure $
+      "Failed to load \"" <>
+      T.pack path <> "\":\n" <> indentFour (T.pack $ show l)
+
+-- | Load a layout file and execute all @SiteAction@s resulting from it.
+executeLayoutFile :: MonadWorld m => FilePath -> BuilderMap -> m ()
+executeLayoutFile = actOnLayoutFile executeSiteAction
 
 -- | Converts a @PathedLayout@ to a @SiteAction@, when given a mapping of
 --   strings to builders.

@@ -17,6 +17,12 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import Tests.Helpers
 
+files =
+  [ ("foo", "- title: from-file")
+  , ("bar", "- title: from-file")
+  , ("baz", "- title: from-file")
+  ]
+
 tests =
   [ testGroup "File deps" testSubBuilderFiles
   , testGroup "Preview" testSubBuilderPreview
@@ -114,24 +120,23 @@ smComplexShow4 =
 
 testSubBuilderFiles =
   [ testCase "Empty, Builder uses no files" $
-    retPassIO (conNeededFiles smEmpty) HS.empty
+    passIO (conNeededFiles smEmpty) HS.empty
   , testCase "Empty, Builder uses the same file constantly" $
-    retPassIO (conNeededFiles smEmptySameFile) HS.empty
+    passIO (conNeededFiles smEmptySameFile) HS.empty
   , testCase "Empty, Builder uses file specified in params" $
-    retPassIO (conNeededFiles smEmptyFile) HS.empty
+    passIO (conNeededFiles smEmptyFile) HS.empty
   , testCase "Single params, macro uses no files" $
-    retPassIO (conNeededFiles smSingle) HS.empty
+    passIO (conNeededFiles smSingle) HS.empty
   , testCase "Single params, macro uses same file constantly" $
-    retPassIO (conNeededFiles smSingleSameFile) $ HS.fromList ["foo"]
+    passIO (conNeededFiles smSingleSameFile) $ HS.fromList ["foo"]
   , testCase "Single params, macro uses file specified in params" $
-    retPassIO (conNeededFiles smSingleFile) $ HS.fromList ["bar"]
+    passIO (conNeededFiles smSingleFile) $ HS.fromList ["bar"]
   , testCase "Multiple params, macro uses no files" $
-    retPassIO (conNeededFiles smMultiple) HS.empty
+    passIO (conNeededFiles smMultiple) HS.empty
   , testCase "Multiple params, macro uses same file constantly" $
-    retPassIO (conNeededFiles smMultipleSameFile) $ HS.fromList ["foo"]
+    passIO (conNeededFiles smMultipleSameFile) $ HS.fromList ["foo"]
   , testCase "Multiple params, macro uses file specified in params" $
-    retPassIO (conNeededFiles smMultipleFile) $
-    HS.fromList ["foo", "bar", "baz"]
+    passIO (conNeededFiles smMultipleFile) $ HS.fromList ["foo", "bar", "baz"]
   ]
 
 testSubBuilderShow =
@@ -157,46 +162,46 @@ testSubBuilderShow =
   ]
 
 testSubBuilderPreview =
-  [ testCase "No params" $ retPassIO (conPreview smEmpty) "Builder executions:"
+  [ testCase "No params" $ passIO (conPreview smEmpty) "Builder executions:"
   , testCase "Single params" $
-    retPassIO
+    passIO
       (conPreview smSingle)
       "Builder executions:\n    Execution with these params:\n      - title: bar"
   , testCase "Multiple params" $
-    retPassIO
+    passIO
       (conPreview smMultiple)
       "Builder executions:\n    Execution with these params:\n      - title: foo\n      - title: bar\n      - title: baz"
   , testCase "Complex preview 1" $
-    retPassFileRead
-      "- title: from-file"
+    passMockFiles
+      files
       (conPreview smComplexShow1)
       "Builder executions:\n    Execution with these params:\n      - title: from-file\n      - title: from-file"
   , testCase "Complex preview 2" $
-    retPassFileRead
-      "- title: from-file"
+    passMockFiles
+      files
       (conPreview smComplexShow2)
       "Builder executions:\n    Execution with these params:\n      - title: from-file\n      - title: from-file"
   , testCase "Complex preview 3" $
-    retPassFileRead
-      "- title: from-file"
+    passMockFiles
+      files
       (conPreview smComplexShow3)
       "Builder executions:\n    Execution with these params:\n      - title: bar\n      - title: baz\n      - title: from-file\n      - title: from-file"
   , testCase "Complex preview 4" $
-    retPassFileRead
-      "- title: from-file"
+    passMockFiles
+      files
       (conPreview smComplexShow4)
       "Builder executions:\n    Execution with these params:\n      - title: bar\n      - title: baz\n      - title: from-file\n      - title: from-file"
   ]
 
 testSubBuilderEvaluate =
-  [ testCase "No params" $ retPassIO (conEvaluate smEmpty) (T.pack "")
+  [ testCase "No params" $ passIO (conEvaluate smEmpty) (T.pack "")
   , testCase "No params with default" $
-    retPassIO (conEvaluate smDefaultNoParams) (T.pack "")
-  , testCase "Single params" $ retPassIO (conEvaluate smSingle) (T.pack "bar")
+    passIO (conEvaluate smDefaultNoParams) (T.pack "")
+  , testCase "Single params" $ passIO (conEvaluate smSingle) (T.pack "bar")
   , testCase "Single params with required default" $
-    retPassIO (conEvaluate Tests.SubBuilder.smDefault) (T.pack "foo")
+    passIO (conEvaluate Tests.SubBuilder.smDefault) (T.pack "foo")
   , testCase "Single params with overwritten default" $
-    retPassIO (conEvaluate smDefault2) (T.pack "foo")
+    passIO (conEvaluate smDefault2) (T.pack "foo")
   , testCase "Multiple params" $
-    retPassIO (conEvaluate smMultiple) (T.pack "foobarbaz")
+    passIO (conEvaluate smMultiple) (T.pack "foobarbaz")
   ]

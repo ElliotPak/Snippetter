@@ -18,6 +18,10 @@ import Test.Tasty.HUnit
 import Tests.Helpers
 import qualified Tests.SubBuilder
 
+files = [("foo", "bar")]
+
+filesMissing = [("food", "bar")]
+
 tests =
   [ testGroup "Text" testText
   , testGroup "Snippet" testSnippet
@@ -33,15 +37,13 @@ testText =
   , testCase "Resolving" testTextEvaluate
   ]
 
-testTextFiles = retPassIO (conNeededFiles $ text $ T.pack "test") HS.empty
+testTextFiles = passIO (conNeededFiles $ text $ T.pack "test") HS.empty
 
 testTextShow = conShow (text $ T.pack "test") @?= (T.pack "\"test\"")
 
-testTextPreview =
-  retPassIO (conPreview $ text $ T.pack "test") (T.pack "\"test\"")
+testTextPreview = passIO (conPreview $ text $ T.pack "test") (T.pack "\"test\"")
 
-testTextEvaluate =
-  retPassIO (conEvaluate $ text $ T.pack "test") (T.pack "test")
+testTextEvaluate = passIO (conEvaluate $ text $ T.pack "test") (T.pack "test")
 
 testSnippet =
   [ testCase "File deps" testSnippetFiles
@@ -50,28 +52,27 @@ testSnippet =
   , testGroup "Resolving" testSnippetEvaluate
   ]
 
-testSnippetFiles =
-  retPassIO (conNeededFiles $ Snippet "foo") $ HS.fromList ["foo"]
+testSnippetFiles = passIO (conNeededFiles $ Snippet "foo") $ HS.fromList ["foo"]
 
 testSnippetShow = conShow (snippet "foo") @?= (T.pack "Snippet named \"foo\"")
 
 testSnippetPreview =
   [ testCase "File exists" $
-    retPassFileRead "bar" (conPreview $ Snippet "foo") $
+    passMockFiles files (conPreview $ Snippet "foo") $
     T.pack "Snippet named \"foo\" with the contents:\n    bar"
   , testCase "File doesn't exist" $
-    retFailMissing
-      "foo"
+    failMockFiles
+      filesMissing
       (conPreview $ Snippet "foo")
       (DocFileError $ NotFound "foo")
   ]
 
 testSnippetEvaluate =
   [ testCase "File exists" $
-    retPassFileRead "bar" (conEvaluate $ Snippet "foo") (T.pack "bar")
+    passMockFiles files (conEvaluate $ Snippet "foo") (T.pack "bar")
   , testCase "File doesn't exist" $
-    retFailMissing
-      "foo"
+    failMockFiles
+      filesMissing
       (conEvaluate $ Snippet "foo")
       (DocFileError $ NotFound "foo")
   ]
@@ -90,9 +91,9 @@ transFile = transform (snippet "foo") $ \text -> text <> (T.pack " baz")
 
 testTransformFiles =
   [ testCase "Child doesn't depend on anything" $
-    retPassIO (conNeededFiles transNoFile) HS.empty
+    passIO (conNeededFiles transNoFile) HS.empty
   , testCase "Child depends on a file" $
-    retPassIO (conNeededFiles transFile) $ HS.fromList ["foo"]
+    passIO (conNeededFiles transFile) $ HS.fromList ["foo"]
   ]
 
 testTransformShow =
@@ -100,20 +101,26 @@ testTransformShow =
 
 testTransformPreview =
   [ testCase "Dry run is the same as normal preview" $
-    retPassIO (conPreview transNoFile) (T.pack "Transformation of: \"test\"")
+    passIO (conPreview transNoFile) (T.pack "Transformation of: \"test\"")
   , testCase "Child is successfully dry ran" $
-    retPassFileRead "bar" (conPreview transFile) $
+    passMockFiles files (conPreview transFile) $
     T.pack
       "Transformation of: \n    Snippet named \"foo\" with the contents:\n        bar"
   , testCase "Child is unsuccessfully dry ran" $
-    retFailMissing "foo" (conPreview transFile) (DocFileError $ NotFound "foo")
+    failMockFiles
+      filesMissing
+      (conPreview transFile)
+      (DocFileError $ NotFound "foo")
   ]
 
 testTransformEvaluate =
   [ testCase "Child is successfully evaluated" $
-    retPassIO (conEvaluate transNoFile) (T.pack "test baz")
+    passIO (conEvaluate transNoFile) (T.pack "test baz")
   , testCase "Child is unsuccessfully evaluated" $
-    retFailMissing "foo" (conEvaluate transFile) (DocFileError $ NotFound "foo")
+    failMockFiles
+      filesMissing
+      (conEvaluate transFile)
+      (DocFileError $ NotFound "foo")
   ]
 
 testTransformError =
@@ -137,13 +144,13 @@ transErrFileFail = transformError (Snippet "foo") $ \text -> Left $ T.pack "idk"
 
 testTransformErrorFiles =
   [ testCase "Child doesn't depend on anything" $
-    retPassIO (conNeededFiles transErrNoFile) HS.empty
+    passIO (conNeededFiles transErrNoFile) HS.empty
   , testCase "Child depends on a file" $
-    retPassIO (conNeededFiles transErrFile) $ HS.fromList ["foo"]
+    passIO (conNeededFiles transErrFile) $ HS.fromList ["foo"]
   , testCase "Child fails and doesn't depend on anything" $
-    retPassIO (conNeededFiles transErrNoFileFail) HS.empty
+    passIO (conNeededFiles transErrNoFileFail) HS.empty
   , testCase "Child fails and depends on a file" $
-    retPassIO (conNeededFiles transErrFileFail) $ HS.fromList ["foo"]
+    passIO (conNeededFiles transErrFileFail) $ HS.fromList ["foo"]
   ]
 
 testTransformErrorShow =
@@ -151,31 +158,31 @@ testTransformErrorShow =
 
 testTransformErrorPreview =
   [ testCase "Dry run is the same as normal preview" $
-    retPassIO (conPreview transErrNoFile) (T.pack "Transformation of: \"test\"")
+    passIO (conPreview transErrNoFile) (T.pack "Transformation of: \"test\"")
   , testCase "Child is successfully dry ran" $
-    retPassFileRead "bar" (conPreview transErrFile) $
+    passMockFiles files (conPreview transErrFile) $
     T.pack
       "Transformation of: \n    Snippet named \"foo\" with the contents:\n        bar"
   , testCase "Child is unsuccessfully dry ran" $
-    retFailMissing
-      "foo"
+    failMockFiles
+      filesMissing
       (conPreview transErrFile)
       (DocFileError $ NotFound "foo")
   ]
 
 testTransformErrorEvaluate =
   [ testCase "Child successfully evaluated, transform succeeds" $
-    retPassIO (conEvaluate transErrNoFile) (T.pack "test baz")
+    passIO (conEvaluate transErrNoFile) (T.pack "test baz")
   , testCase "Child successfully evaluated, transform fails" $
-    retFailIO (conEvaluate transErrNoFileFail) (MiscDocError "idk")
+    failIO (conEvaluate transErrNoFileFail) (MiscDocError "idk")
   , testCase "Child unsuccessfully evaluated, transform succeeds" $
-    retFailMissing
-      "foo"
+    failMockFiles
+      filesMissing
       (conEvaluate transErrFile)
       (DocFileError $ NotFound "foo")
   , testCase "Child unsuccessfully evaluated, transform fails" $
-    retFailMissing
-      "foo"
+    failMockFiles
+      filesMissing
       (conEvaluate transErrFileFail)
       (DocFileError $ NotFound "foo")
   ]

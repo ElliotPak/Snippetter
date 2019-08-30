@@ -194,3 +194,12 @@ loadSiteActions ::
 loadSiteActions path map = do
   layout <- loadLayoutFile path
   liftEither $ mapM (layoutToAction map) layout
+
+-- | Determine files needed to execute a @SiteAction@.
+saNeededFiles :: MonadReadFile m => SiteAction -> LayoutFileResult m FilePathSet
+saNeededFiles (Build m pp f) =
+  filesForBuilder m pp `mapResultError` LayoutDocError
+saNeededFiles (Copy from to) = return $ HS.singleton from
+saNeededFiles (Move from to) = return $ HS.singleton from
+saNeededFiles (Delete file) = return $ HS.singleton file
+saNeededFiles (Run process args stdin) = return HS.empty

@@ -25,10 +25,10 @@ files =
   ]
 
 sameFileBuilder :: Builder
-sameFileBuilder params = return [add $ snippet "foo"]
+sameFileBuilder params = return $ snippet "foo"
 
 noFileBuilder :: Builder
-noFileBuilder params = return [add $ text "foo"]
+noFileBuilder params = return $ text "foo"
 
 sameFileBuild = Build sameFileBuilder (makePathed emptyParams) "output"
 

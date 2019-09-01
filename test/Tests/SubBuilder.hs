@@ -33,15 +33,15 @@ tests =
 basicBuilder :: Builder
 basicBuilder params = do
   temp <- lookupText "title" params
-  return [add $ text temp]
+  return $ text temp
 
 sameFileBuilder :: Builder
-sameFileBuilder params = return [add $ Snippet "foo"]
+sameFileBuilder params = return $ Snippet "foo"
 
 fileBuilder :: Builder
 fileBuilder params = do
   temp <- lookupText "title" params
-  return [add $ Snippet $ T.unpack temp]
+  return $ Snippet $ T.unpack temp
 
 fromText str =
   unObject (Y.decodeEither' (B.pack str) :: Either Y.ParseException Y.Value)

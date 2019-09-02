@@ -350,32 +350,55 @@ smEvaluate sme = do
   conEvaluate con
 
 -- | Represents operations that transform text in some way.
-data Action =
-  SingleContentAction Content (T.Text -> T.Text -> T.Text) T.Text
+data Action
+  = NoContentAction (T.Text -> T.Text) T.Text
+  | SingleContentAction Content (T.Text -> T.Text -> T.Text) T.Text
+  | MultiContentAction [Content] (T.Text -> [T.Text] -> T.Text) T.Text
+  | NoAction
 
 instance Show Action where
   show a = T.unpack $ actShow a
 
 -- | Determine files needed by an @Action@ to execute.
 actNeededFiles :: MonadReadFile m => Action -> DocFileResult m FilePathSet
+actNeededFiles (NoContentAction _ _) = return HS.empty
 actNeededFiles (SingleContentAction c _ _) = conNeededFiles c
+actNeededFiles (MultiContentAction c _ _) = do
+  needed <- mapM conNeededFiles c
+  return $ HS.unions needed
+actNeededFiles NoAction = return HS.empty
 
 -- | Execute the given @Action@ on the specified text.
 actExecute :: MonadReadFile m => Action -> T.Text -> DocFileResult m T.Text
+actExecute (NoContentAction f _) text = return $ f text
 actExecute (SingleContentAction c f _) text = do
   evaluated <- conEvaluate c
   return $ f text evaluated
+actExecute (MultiContentAction c f _) text = do
+  evaluated <- mapM conEvaluate c
+  return $ f text evaluated
+actExecute NoAction text = return text
 
 -- | Show an @Action@. This is like @show@ except it uses @Text@.
 actShow :: Action -> T.Text
+actShow (NoContentAction _ t) = t
 actShow (SingleContentAction c _ t) = t <\> indentFour (conShow c)
+actShow (MultiContentAction c _ t) = t <\> indentFour content
+  where
+    content = T.intercalate "\n" (map (indentWithListMarker . conShow) c)
+actShow NoAction = "No action"
 
 -- | Preview an @Action@, similar to @actShow@, except files may be read   to
 --   determine extra information.
 actPreview :: MonadReadFile m => Action -> DocFileResult m T.Text
+actPreview (NoContentAction _ t) = return t
 actPreview (SingleContentAction c _ t) = do
   dryRun <- conPreview c
   return $ t <\> indentFour dryRun
+actPreview (MultiContentAction c _ t) = do
+  previewed <- mapM conPreview c
+  return $ t <> T.intercalate "\n" (map (indentWithListMarker . conShow) c)
+actPreview NoAction = return "No action"
 
 -- | Public function for creating a @Text@ (the @Content@) from a @Data.Text@.
 text = Text
@@ -406,6 +429,18 @@ contentList = ContentList
 
 -- | Public function for creating an @EmptyContent@.
 emptyContent = EmptyContent
+
+-- | Public function for creating a @NoContentAction@.
+noContentAction = NoContentAction
+
+-- | Public function for creating a @SingleContentAction@.
+singleContentAction = SingleContentAction
+
+-- | Public function for creating a @MultiContentAction@.
+multiContentAction = MultiContentAction
+
+-- | Public function for creating a @NoAction@.
+noAction = NoAction
 
 -- | Shorthand for creating an @Action@ that adds one @Content@ to text.
 add :: Content -> Action

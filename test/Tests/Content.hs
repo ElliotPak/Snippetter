@@ -32,7 +32,7 @@ tests =
 
 testText =
   [ testCase "File deps" testTextFiles
-  , testCase "Preview" testTextPreview
+  , testCase "Show" testTextShow
   , testCase "Preview" testTextPreview
   , testCase "Resolving" testTextEvaluate
   ]

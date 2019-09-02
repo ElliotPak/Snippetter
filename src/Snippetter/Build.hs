@@ -383,7 +383,7 @@ actExecute NoAction text = return text
 actShow :: Action -> T.Text
 actShow (NoContentAction _ t) = t
 actShow (SingleContentAction c _ t) = t <\> indentFour (conShow c)
-actShow (MultiContentAction c _ t) = t <\> indentFour content
+actShow (MultiContentAction c _ t) = t <> "\n" <> content
   where
     content = T.intercalate "\n" (map (indentWithListMarker . conShow) c)
 actShow NoAction = "No action"
@@ -397,7 +397,8 @@ actPreview (SingleContentAction c _ t) = do
   return $ t <\> indentFour dryRun
 actPreview (MultiContentAction c _ t) = do
   previewed <- mapM conPreview c
-  return $ t <> T.intercalate "\n" (map (indentWithListMarker . conShow) c)
+  return $
+    t <> "\n" <> T.intercalate "\n" (map (indentWithListMarker . conShow) c)
 actPreview NoAction = return "No action"
 
 -- | Public function for creating a @Text@ (the @Content@) from a @Data.Text@.

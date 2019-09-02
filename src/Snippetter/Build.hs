@@ -118,7 +118,7 @@ builderWithParamsFile builder path = do
 builderWithParams :: Builder -> [PathedParams] -> DocResult
 builderWithParams m v = do
   mapped <- mapM (buildDoc m) v
-  return $ Doc EmptyContent $ map add mapped
+  return $ ContentList mapped
 
 -- | Build a @Doc@ by running a @Builder@ with the given parameters.
 buildDoc :: Builder -> PathedParams -> DocResult
@@ -147,6 +147,7 @@ data Content
   | TransformError Content (T.Text -> Either T.Text T.Text)
   | SubBuilder SubBuilderExec
   | Doc Content [Action]
+  | ContentList [Content]
   | EmptyContent
 
 instance Show Content where
@@ -160,9 +161,12 @@ conNeededFiles (Transform c _) = conNeededFiles c
 conNeededFiles (TransformError c _) = conNeededFiles c
 conNeededFiles (SubBuilder sme) = smNeededFiles sme
 conNeededFiles (Doc c d) = do
-    dNeeded <- actListNeededFiles d
-    cNeeded <- conNeededFiles c
-    return $ HS.union dNeeded cNeeded
+  dNeeded <- actListNeededFiles d
+  cNeeded <- conNeededFiles c
+  return $ HS.union dNeeded cNeeded
+conNeededFiles (ContentList c) = do
+  cNeeded <- mapM conNeededFiles c
+  return $ HS.unions cNeeded
 conNeededFiles EmptyContent = return HS.empty
 
 -- | Show a piece of @Content@. This is like @show@ except it uses @Text@.
@@ -176,9 +180,14 @@ conShow (TransformError c f) = "Transformation of: " <\> indentFour pre
   where
     pre = conShow c
 conShow (SubBuilder sme) = "Builder executions:" <\\> indentFour (smShow sme)
-conShow (Doc c d) = "Doc containing: \n" <> indentFour (conShow c) <>
-    "\n  With the following actions applied to it:\n" <> actions
-    where actions = T.intercalate "\n" (map (indentWithListMarker . actShow) d)
+conShow (Doc c d) =
+  "Doc containing " <\> indentFour (conShow c) <>
+  "\n  With the following actions applied to it:\n" <> actions
+  where
+    actions = T.intercalate "\n" (map (indentWithListMarker . actShow) d)
+conShow (ContentList c) = "The following content:\n" <> contents
+  where
+    contents = T.intercalate "\n" (map (indentWithListMarker . conShow) c)
 conShow EmptyContent = "Empty content"
 
 -- | Preview a piece of @Content@, similar to @conShow@, except files may be read
@@ -198,13 +207,19 @@ conPreview (TransformError c f) = do
 conPreview (SubBuilder sme) = do
   previewed <- smPreview sme
   return $ "Builder executions:" <\\> indentFour previewed
-conPreview (Doc c d) = do 
-    cPreviewed <- conPreview c
-    dPreviewed <- mapM actPreview d
-    return $ "Doc containing: \n" <> indentFour (cPreviewed) <>
-         "\n  With the following actions applied to it:\n" <>
-             T.intercalate "\n" (map indentWithListMarker dPreviewed)
-
+conPreview (Doc c d) = do
+  cPreviewed <- conPreview c
+  dPreviewed <- mapM actPreview d
+  return $
+    "Doc containing: \n" <>
+    indentFour cPreviewed <>
+    "\n  With the following actions applied to it:\n" <>
+    T.intercalate "\n" (map indentWithListMarker dPreviewed)
+conPreview (ContentList c) = do
+  cPreviewed <- mapM conPreview c
+  return $
+    "The following content:\n" <>
+    T.intercalate "\n" (map indentWithListMarker cPreviewed)
 conPreview EmptyContent = return "Empty content"
 
 -- | Convert a @Content@ to text.
@@ -219,8 +234,11 @@ conEvaluate (TransformError c f) = do
   liftEither $ mapLeft MiscDocError $ f sub
 conEvaluate (SubBuilder sme) = smEvaluate sme
 conEvaluate (Doc c d) = do
-    initial <- conEvaluate c
-    actListExecute d initial
+  initial <- conEvaluate c
+  actListExecute d initial
+conEvaluate (ContentList c) = do
+  contents <- mapM conEvaluate c
+  return $ T.concat contents
 conEvaluate EmptyContent = return ""
 
 -- | Determine files needed by a @[Action]@.
@@ -230,7 +248,8 @@ actListNeededFiles doc = do
   return $ HS.unions mapped
 
 -- | Execute all @Actions@ within a @[Action]@.
-actListExecute :: MonadReadFile m => [Action] -> T.Text -> DocFileResult m T.Text
+actListExecute ::
+     MonadReadFile m => [Action] -> T.Text -> DocFileResult m T.Text
 actListExecute [] text = return text
 actListExecute (x:xs) text = do
   head <- actExecute x text
@@ -381,6 +400,12 @@ subBuilder = SubBuilder
 
 -- | Public function for creating a @SubBuilderExec@.
 subBuilderExec = SubBuilderExec
+
+-- | Public function for creating a @ContentList@.
+contentList = ContentList
+
+-- | Public function for creating an @EmptyContent@.
+emptyContent = EmptyContent
 
 -- | Shorthand for creating an @Action@ that adds one @Content@ to text.
 add :: Content -> Action

@@ -4,11 +4,27 @@ module Snippetter.FileGraph where
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
 import Data.Maybe
+import qualified Data.Text as T
 import Snippetter.Build
-import Snippetter.Layout
+import Snippetter.IO
+import Snippetter.Utilities
 
 -- | Shorthand for a mapping from a file to a set of files.
 type FileMapping = HM.HashMap FilePath FilePathSet
+
+data GraphError
+  = GraphFileError FileError
+  | MissingKey FilePath
+  | OtherGraphError T.Text
+  deriving (Eq)
+
+instance Show GraphError where
+  show (GraphFileError e) = "While reading a file:\n" <> indentFourStr (show e)
+  show (MissingKey k) =
+    "The following key was missing from the file graph: " <> k
+  show (OtherGraphError t) = "A YAML error occured: " <> T.unpack t
+
+type GraphResult m a = Result GraphError m a
 
 -- | A file graph. Contains a list of files and their parent/child
 -- relationships to each other.
@@ -110,3 +126,19 @@ getParents path graph = HM.lookup path (childToParent graph)
 getParents' :: FilePath -> FileGraph -> FilePathSet
 getParents' path graph =
   fromMaybe (error "node doesn't exist") (getParents path graph)
+
+-- | Checks if the a file in the graph is up to date.
+isUpToDate :: MonadReadWorld m => FilePath -> FileGraph -> GraphResult m Bool
+isUpToDate file graph =
+  case getParents file graph of
+    Nothing -> resultE $ MissingKey file
+    Just p -> do
+      results <- resultLift $ mapM (isOlder file) (HS.toList p)
+      return $ and results
+
+-- | Checks if the first file is older than the second.
+isOlder :: MonadReadWorld m => FilePath -> FilePath -> m Bool
+isOlder target dep = do
+  targetDate <- fileModifyTime target
+  depDate <- fileModifyTime dep
+  return $ targetDate > depDate

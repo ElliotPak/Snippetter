@@ -17,56 +17,129 @@ import Test.Tasty.HUnit
 import Tests.Helpers
 
 tests =
-  [ testGroup "Building Graphs" testBuildingGraphs
+  [ testCase "Getting Parents/Children" testGettingParentsAndChildren
+  , testGroup "Building Graphs" testBuildingGraphs
   , testGroup "Checking Children" testCheckChildren
+  , testGroup "Checking Parents" testCheckParents
   ]
+
+testGettingParentsAndChildren = do
+  let graph = FG.graphFromChild "foo" $ HS.fromList ["bar", "baz"]
+  FG.parentToChild graph @?=
+    HM.fromList
+      [ ("foo", HS.fromList ["bar", "baz"])
+      , ("bar", HS.empty)
+      , ("baz", HS.empty)
+      ]
+  FG.childToParent graph @?=
+    HM.fromList
+      [ ("bar", HS.singleton "foo")
+      , ("baz", HS.singleton "foo")
+      , ("foo", HS.empty)
+      ]
+  FG.notEmptyParentToChild graph @?=
+    HM.fromList [("foo", HS.fromList ["bar", "baz"])]
+  FG.notEmptyChildToParent graph @?=
+    HM.fromList [("bar", HS.singleton "foo"), ("baz", HS.singleton "foo")]
 
 testBuildingGraphs =
   [ testCase "Singleton graph" $ do
-      let graph = FG.graphFromMapping "foo" $ HS.fromList ["bar", "baz"]
-      FG.files graph @?= HS.singleton "foo"
-      FG.connections graph @?= HM.fromList [("foo", HS.fromList ["bar", "baz"])]
+      let graph = FG.graphFromChild "foo" $ HS.fromList ["bar", "baz"]
+      FG.files graph @?= HS.fromList ["foo", "bar", "baz"]
+      FG.notEmptyParentToChild graph @?=
+        HM.fromList [("foo", HS.fromList ["bar", "baz"])]
+      FG.notEmptyChildToParent graph @?=
+        HM.fromList [("bar", HS.singleton "foo"), ("baz", HS.singleton "foo")]
   , testCase "Multiple graphs" $ do
       let mappings =
             [ ("foo", HS.fromList ["bar", "baz"])
             , ("yay", HS.fromList ["nay", "bray"])
             ]
-      let graph = FG.graphFromMappings mappings
-      FG.files graph @?= HS.fromList ["foo", "yay"]
-      FG.connections graph @?= HM.fromList mappings
+      let graph = FG.graphFromChildren mappings
+      FG.files graph @?= HS.fromList ["foo", "yay", "bar", "baz", "nay", "bray"]
+      FG.notEmptyParentToChild graph @?= HM.fromList mappings
+      FG.notEmptyChildToParent graph @?=
+        HM.fromList
+          [ ("bar", HS.singleton "foo")
+          , ("baz", HS.singleton "foo")
+          , ("nay", HS.singleton "yay")
+          , ("bray", HS.singleton "yay")
+          ]
   , testCase "Adding single mapping" $ do
       let mappings =
             [ ("foo", HS.fromList ["bar", "baz"])
             , ("yay", HS.fromList ["nay", "bray"])
             ]
-      let newMapping = ("one", HS.fromList ["two", "three"])
-      let graph =
-            uncurry FG.addMapping newMapping $ FG.graphFromMappings mappings
-      FG.files graph @?= HS.fromList ["foo", "yay", "one"]
-      FG.connections graph @?=
-        HM.union (uncurry HM.singleton newMapping) (HM.fromList mappings)
+      let newChild = ("one", HS.fromList ["two", "three"])
+      let graph = uncurry FG.addChild newChild $ FG.graphFromChildren mappings
+      FG.files graph @?=
+        HS.fromList
+          ["foo", "yay", "bar", "baz", "nay", "bray", "one", "two", "three"]
+      FG.notEmptyParentToChild graph @?=
+        HM.union (uncurry HM.singleton newChild) (HM.fromList mappings)
+      FG.notEmptyChildToParent graph @?=
+        HM.fromList
+          [ ("bar", HS.singleton "foo")
+          , ("baz", HS.singleton "foo")
+          , ("nay", HS.singleton "yay")
+          , ("bray", HS.singleton "yay")
+          , ("two", HS.singleton "one")
+          , ("three", HS.singleton "one")
+          ]
   , testCase "Adding multiple mapping" $ do
       let mappings =
             [ ("foo", HS.fromList ["bar", "baz"])
             , ("yay", HS.fromList ["nay", "bray"])
             ]
-      let newMappings =
+      let newChildren =
             [ ("one", HS.fromList ["two", "three"])
             , ("four", HS.fromList ["five", "six"])
             ]
-      let graph = FG.addMappings newMappings $ FG.graphFromMappings mappings
-      FG.files graph @?= HS.fromList ["foo", "yay", "one", "four"]
-      FG.connections graph @?=
-        HM.union (HM.fromList newMappings) (HM.fromList mappings)
+      let graph = FG.addChildren newChildren $ FG.graphFromChildren mappings
+      FG.files graph @?=
+        HS.fromList
+          [ "foo"
+          , "yay"
+          , "bar"
+          , "baz"
+          , "nay"
+          , "bray"
+          , "one"
+          , "two"
+          , "three"
+          , "four"
+          , "five"
+          , "six"
+          ]
+      FG.notEmptyParentToChild graph @?=
+        HM.union (HM.fromList newChildren) (HM.fromList mappings)
+      FG.notEmptyChildToParent graph @?=
+        HM.fromList
+          [ ("bar", HS.singleton "foo")
+          , ("baz", HS.singleton "foo")
+          , ("nay", HS.singleton "yay")
+          , ("bray", HS.singleton "yay")
+          , ("two", HS.singleton "one")
+          , ("three", HS.singleton "one")
+          , ("five", HS.singleton "four")
+          , ("six", HS.singleton "four")
+          ]
   , testCase "Same file, different deps" $ do
       let mappings =
             [ ("foo", HS.fromList ["bar", "baz"])
             , ("foo", HS.fromList ["nay", "bray"])
             ]
-      let graph = FG.graphFromMappings mappings
-      FG.files graph @?= HS.fromList ["foo"]
-      FG.connections graph @?=
+      let graph = FG.graphFromChildren mappings
+      FG.files graph @?= HS.fromList ["foo", "bar", "baz", "nay", "bray"]
+      FG.notEmptyParentToChild graph @?=
         HM.singleton "foo" (HS.fromList ["bar", "baz", "nay", "bray"])
+      FG.notEmptyChildToParent graph @?=
+        HM.fromList
+          [ ("bar", HS.singleton "foo")
+          , ("baz", HS.singleton "foo")
+          , ("nay", HS.singleton "foo")
+          , ("bray", HS.singleton "foo")
+          ]
   ]
 
 testCheckChildren =
@@ -75,10 +148,28 @@ testCheckChildren =
     FG.getChildren "foo" graph @?= Just (HS.fromList ["bar", "baz"])
   , testCase "Populated graph, doesn't exist" $
     FG.getChildren "whatever" graph @?= Nothing
+  , testCase "Populated graph, no children" $
+    FG.getChildren "bar" graph @?= Just HS.empty
   ]
   where
     graph =
-      FG.graphFromMappings
+      FG.graphFromChildren
+        [ ("foo", HS.fromList ["bar", "baz"])
+        , ("yay", HS.fromList ["nay", "bray"])
+        ]
+
+testCheckParents =
+  [ testCase "Empty graph" $ FG.getParents "test" FG.empty @?= Nothing
+  , testCase "Populated graph, exists" $
+    FG.getParents "bar" graph @?= Just (HS.fromList ["foo"])
+  , testCase "Populated graph, doesn't exist" $
+    FG.getParents "whatever" graph @?= Nothing
+  , testCase "Populated graph, no parents" $
+    FG.getParents "foo" graph @?= Just HS.empty
+  ]
+  where
+    graph =
+      FG.graphFromChildren
         [ ("foo", HS.fromList ["bar", "baz"])
         , ("yay", HS.fromList ["nay", "bray"])
         ]

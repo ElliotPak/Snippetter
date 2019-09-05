@@ -3,8 +3,6 @@
 -- | Contains functions/types related to loading and executing layout files.
 module Snippetter.Layout where
 
-import Control.Monad.Except
-import Control.Monad.Trans.Except
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
 import qualified Data.Text as T
@@ -29,11 +27,8 @@ instance Show LayoutError where
   show (LayoutFileError e) = "While reading a file:\n" <> indentFourStr (show e)
   show (MiscLayoutError t) = "An error occured:" <> T.unpack t
 
--- | The result of a function that makes/executes a @SiteAction@.
-type LayoutResult a = Either LayoutError a
-
 -- | The result of a function that makes/executes a @SiteAction@ and can read files.
-type LayoutFileResult m a = ExceptT LayoutError m a
+type LayoutResult m a = Result LayoutError m a
 
 -- | A map of @T.Text@ to @Builder@s.
 type BuilderMap = HM.HashMap T.Text Builder
@@ -81,8 +76,7 @@ data SiteAction
 
 -- | Retrieves contents of the specific file, and maps possible errors to
 --   @LayoutFileError@s.
-fileContentsInLayout ::
-     MonadReadWorld m => FilePath -> LayoutFileResult m T.Text
+fileContentsInLayout :: MonadReadWorld m => FilePath -> LayoutResult m T.Text
 fileContentsInLayout path = getFileContents path `mapResultError` mapping
   where
     mapping = LayoutFileError
@@ -92,7 +86,7 @@ addPath :: FilePath -> Layout -> PathedLayout
 addPath path layout = PathedLayout layout (Just path)
 
 -- | Load a YAML file as a list of @Layout@s.
-yamlAsLayout :: MonadReadWorld m => FilePath -> LayoutFileResult m [Layout]
+yamlAsLayout :: MonadReadWorld m => FilePath -> LayoutResult m [Layout]
 yamlAsLayout path =
   let errorMapping = LayoutYamlError
    in (yamlIfExists path :: MonadReadWorld m =>
@@ -100,14 +94,13 @@ yamlAsLayout path =
       errorMapping
 
 -- | Loads a list of pathed layouts from a file.
-loadLayoutFile ::
-     MonadReadWorld m => FilePath -> LayoutFileResult m [PathedLayout]
+loadLayoutFile :: MonadReadWorld m => FilePath -> LayoutResult m [PathedLayout]
 loadLayoutFile path = do
   y <- yamlAsLayout path
   return $ map (addPath path) y
 
 -- | Actually executes the @SiteAction@ and returns the result for it.
-executeSiteAction' :: MonadWriteWorld m => SiteAction -> LayoutFileResult m ()
+executeSiteAction' :: MonadWriteWorld m => SiteAction -> LayoutResult m ()
 executeSiteAction' (Build m pp fp) = do
   executed <- executeBuilder m pp `mapResultError` LayoutDocError
   writeFile fp executed `mapResultError` LayoutFileError
@@ -142,7 +135,7 @@ executeSiteAction sa = do
   let name = siteActionName sa
   let (tenseA, tenseB, tenseC) = siteActionTenses sa
   notifyProgress $ tenseA <> " \"" <> name <> "\"..."
-  result <- runExceptT $ executeSiteAction' sa
+  result <- runResult $ executeSiteAction' sa
   case result of
     Right r ->
       notifySuccess $ "Successfully " <> tenseB <> " \"" <> name <> "\"."
@@ -154,7 +147,7 @@ executeSiteAction sa = do
 actOnLayoutFile ::
      MonadWriteWorld m => (SiteAction -> m ()) -> FilePath -> BuilderMap -> m ()
 actOnLayoutFile act path map = do
-  actions <- runExceptT $ loadSiteActions path map
+  actions <- runResult $ loadSiteActions path map
   case actions of
     Right r -> mapM_ act r
     Left l ->
@@ -188,17 +181,13 @@ layoutToAction map (PathedLayout layout input) = ll input layout
 -- | Loads a list of @SiteAction@ from a file, when given a mapping of strings
 --   to builders
 loadSiteActions ::
-     MonadReadWorld m
-  => FilePath
-  -> BuilderMap
-  -> LayoutFileResult m [SiteAction]
+     MonadReadWorld m => FilePath -> BuilderMap -> LayoutResult m [SiteAction]
 loadSiteActions path map = do
   layout <- loadLayoutFile path
-  liftEither $ mapM (layoutToAction map) layout
+  resultLiftEither $ mapM (layoutToAction map) layout
 
 -- | Determine files needed to execute a @SiteAction@.
-saNeededFiles ::
-     MonadReadWorld m => SiteAction -> LayoutFileResult m FilePathSet
+saNeededFiles :: MonadReadWorld m => SiteAction -> LayoutResult m FilePathSet
 saNeededFiles (Build m pp f) =
   filesForBuilder m pp `mapResultError` LayoutDocError
 saNeededFiles (Copy from to) = return $ HS.singleton from

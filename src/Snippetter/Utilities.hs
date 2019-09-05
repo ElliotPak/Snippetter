@@ -4,6 +4,8 @@
 --   of the library, and some are intended to be used when creating Macros.
 module Snippetter.Utilities where
 
+import Control.Monad.Except
+import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Data.Aeson.Types (Object, Value(Object, String))
 import Data.HashMap.Strict (HashMap, lookup)
@@ -13,6 +15,29 @@ import Data.List.Split
 import qualified Data.Text as T
 import Prelude hiding (lookup)
 import System.FilePath
+
+type Result e m a = ExceptT e m a
+
+result = ExceptT
+
+runResult = runExceptT
+
+resultE :: Monad m => e -> Result e m a
+resultE = throwE
+
+resultLiftEither :: Monad m => Either e a -> Result e m a
+resultLiftEither = liftEither
+
+resultLift :: Monad m => m a -> Result e m a
+resultLift = lift
+
+-- | Maps the error values of a Result type.
+--   Right now this type is an alias for ExceptTs.
+mapResultError :: Monad m => Result e m a -> (e -> e') -> Result e' m a
+mapResultError except mapping = result answer
+  where
+    ran = runResult except
+    answer = fmap (mapLeft mapping) ran
 
 -- | Shorthand for a builder's parameters.
 -- Identical to the type of an Aeson object.
@@ -40,14 +65,6 @@ unRight _ = error "unRight on left value"
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f (Left x) = Left $ f x
 mapLeft _ (Right x) = Right x
-
--- | Maps the error values of a Result type.
---   Right now this type is an alias for ExceptTs.
-mapResultError :: Monad m => ExceptT e m a -> (e -> e') -> ExceptT e' m a
-mapResultError except mapping = ExceptT answer
-  where
-    ran = runExceptT except
-    answer = fmap (mapLeft mapping) ran
 
 -- | Converts a Maybe to an Either.
 maybeToEither :: l -> Maybe r -> Either l r

@@ -85,21 +85,21 @@ type FilePathSet = HS.HashSet FilePath
 
 -- | Retrieves contents of the specific file, and maps possible errors to
 --   @DocFileError@s.
-fileContentsInDoc :: MonadReadFile m => FilePath -> DocFileResult m T.Text
+fileContentsInDoc :: MonadReadWorld m => FilePath -> DocFileResult m T.Text
 fileContentsInDoc path = getFileContents path `mapResultError` mapping
   where
     mapping = DocFileError
 
 -- | Load a YAML file as a list of @Params@.
-yamlAsParams :: MonadReadFile m => FilePath -> DocFileResult m [Params]
+yamlAsParams :: MonadReadWorld m => FilePath -> DocFileResult m [Params]
 yamlAsParams path =
   let errorMapping = DocYamlError
-   in (yamlIfExists path :: MonadReadFile m =>
+   in (yamlIfExists path :: MonadReadWorld m =>
                               YamlResult m [Params]) `mapResultError`
       errorMapping
 
 -- | Load all paramaters from a (possible) paramater file as @PathedParams@.
-paramsFromFile :: MonadReadFile m => FilePath -> DocFileResult m [PathedParams]
+paramsFromFile :: MonadReadWorld m => FilePath -> DocFileResult m [PathedParams]
 paramsFromFile file = do
   values <- yamlAsParams file
   let addPath x = PathedParams x $ Just file
@@ -108,7 +108,7 @@ paramsFromFile file = do
 -- | Create a @Doc@ by running a @Builder@, using the values of a YAML collection
 --   as its parameters.
 builderWithParamsFile ::
-     MonadReadFile m => Builder -> FilePath -> DocFileResult m Content
+     MonadReadWorld m => Builder -> FilePath -> DocFileResult m Content
 builderWithParamsFile builder path = do
   fromFile <- paramsFromFile path
   liftEither $ builderWithParams builder fromFile
@@ -129,14 +129,14 @@ buildDoc m (PathedParams params path) =
 
 -- | Evaluates the given @Builder@ to text with the given parameters.
 executeBuilder ::
-     MonadReadFile m => Builder -> PathedParams -> DocFileResult m T.Text
+     MonadReadWorld m => Builder -> PathedParams -> DocFileResult m T.Text
 executeBuilder m pp = do
   doc <- liftEither $ buildDoc m pp
   conEvaluate doc
 
 -- | Determines files needed to run the @Builder@ with the given parameters.
 filesForBuilder ::
-     MonadReadFile m => Builder -> PathedParams -> DocFileResult m FilePathSet
+     MonadReadWorld m => Builder -> PathedParams -> DocFileResult m FilePathSet
 filesForBuilder m pp = liftEither (buildDoc m pp) >>= conNeededFiles
 
 -- | Represents operations that evaluate to text.
@@ -154,7 +154,7 @@ instance Show Content where
   show c = T.unpack $ conShow c
 
 -- | Determine files needed by a Content.
-conNeededFiles :: MonadReadFile m => Content -> DocFileResult m FilePathSet
+conNeededFiles :: MonadReadWorld m => Content -> DocFileResult m FilePathSet
 conNeededFiles (Text _) = return HS.empty
 conNeededFiles (Snippet s) = return $ HS.singleton s
 conNeededFiles (Transform c _) = conNeededFiles c
@@ -192,7 +192,7 @@ conShow EmptyContent = "Empty content"
 
 -- | Preview a piece of @Content@, similar to @conShow@, except files may be read
 --   to determine extra information.
-conPreview :: MonadReadFile m => Content -> DocFileResult m T.Text
+conPreview :: MonadReadWorld m => Content -> DocFileResult m T.Text
 conPreview (Text t) = return $ "\"" <> t <> "\""
 conPreview (Snippet s) = do
   contents <- fileContentsInDoc s
@@ -223,7 +223,7 @@ conPreview (ContentList c) = do
 conPreview EmptyContent = return "Empty content"
 
 -- | Convert a @Content@ to text.
-conEvaluate :: MonadReadFile m => Content -> DocFileResult m T.Text
+conEvaluate :: MonadReadWorld m => Content -> DocFileResult m T.Text
 conEvaluate (Text t) = return t
 conEvaluate (Snippet s) = fileContentsInDoc s
 conEvaluate (Transform c f) = do
@@ -242,14 +242,15 @@ conEvaluate (ContentList c) = do
 conEvaluate EmptyContent = return ""
 
 -- | Determine files needed by a @[Action]@.
-actListNeededFiles :: MonadReadFile m => [Action] -> DocFileResult m FilePathSet
+actListNeededFiles ::
+     MonadReadWorld m => [Action] -> DocFileResult m FilePathSet
 actListNeededFiles doc = do
   mapped <- mapM actNeededFiles doc
   return $ HS.unions mapped
 
 -- | Execute all @Actions@ within a @[Action]@.
 actListExecute ::
-     MonadReadFile m => [Action] -> T.Text -> DocFileResult m T.Text
+     MonadReadWorld m => [Action] -> T.Text -> DocFileResult m T.Text
 actListExecute [] text = return text
 actListExecute (x:xs) text = do
   head <- actExecute x text
@@ -271,14 +272,14 @@ instance Show SubBuilderExec where
 -- | Load parameters from all parameter files in a @SubBuilderExec@, without
 --   default parameters applied.
 smFileParams ::
-     MonadReadFile m => SubBuilderExec -> DocFileResult m [PathedParams]
+     MonadReadWorld m => SubBuilderExec -> DocFileResult m [PathedParams]
 smFileParams sm = do
   params <- mapM paramsFromFile (HS.toList $ smFiles sm)
   return $ concat params
 
 -- | Load all parameters in a @SubBuilderExec@, with default parameters applied.
 smAllParams ::
-     MonadReadFile m => SubBuilderExec -> DocFileResult m [PathedParams]
+     MonadReadWorld m => SubBuilderExec -> DocFileResult m [PathedParams]
 smAllParams sm = do
   fileParams <- smFileParams sm
   let allParams = smParams sm ++ fileParams
@@ -293,7 +294,7 @@ pathedParamDefault def (PathedParams params ppath) =
 
 -- | Determine files needed by a @SubBuilderExec@.
 smNeededFiles ::
-     MonadReadFile m => SubBuilderExec -> DocFileResult m FilePathSet
+     MonadReadWorld m => SubBuilderExec -> DocFileResult m FilePathSet
 smNeededFiles sm = do
   params <- smAllParams sm
   entries <- liftEither $ builderWithParams (smBuilder sm) params
@@ -331,7 +332,7 @@ smShow (SubBuilderExec m def pp f) = tDefaults <\\> tParams <\\> tFile
           (HS.toList (HS.map (indentWithListMarker . T.pack) f))
 
 -- | Preview a @SubBuilderExec@ with file reading (see @conPreview@).
-smPreview :: MonadReadFile m => SubBuilderExec -> DocFileResult m T.Text
+smPreview :: MonadReadWorld m => SubBuilderExec -> DocFileResult m T.Text
 smPreview sm = do
   allParams <- smAllParams sm
   case allParams of
@@ -343,7 +344,7 @@ smPreview sm = do
 
 -- | Evaluate a @SubBuilderExec@. This is done by running the builder on all
 --   specified parameters, and on all parameters in the specified files.
-smEvaluate :: MonadReadFile m => SubBuilderExec -> DocFileResult m T.Text
+smEvaluate :: MonadReadWorld m => SubBuilderExec -> DocFileResult m T.Text
 smEvaluate sme = do
   params <- smAllParams sme
   con <- liftEither $ builderWithParams (smBuilder sme) params
@@ -360,7 +361,7 @@ instance Show Action where
   show a = T.unpack $ actShow a
 
 -- | Determine files needed by an @Action@ to execute.
-actNeededFiles :: MonadReadFile m => Action -> DocFileResult m FilePathSet
+actNeededFiles :: MonadReadWorld m => Action -> DocFileResult m FilePathSet
 actNeededFiles (NoContentAction _ _) = return HS.empty
 actNeededFiles (SingleContentAction c _ _) = conNeededFiles c
 actNeededFiles (MultiContentAction c _ _) = do
@@ -369,7 +370,7 @@ actNeededFiles (MultiContentAction c _ _) = do
 actNeededFiles NoAction = return HS.empty
 
 -- | Execute the given @Action@ on the specified text.
-actExecute :: MonadReadFile m => Action -> T.Text -> DocFileResult m T.Text
+actExecute :: MonadReadWorld m => Action -> T.Text -> DocFileResult m T.Text
 actExecute (NoContentAction f _) text = return $ f text
 actExecute (SingleContentAction c f _) text = do
   evaluated <- conEvaluate c
@@ -390,7 +391,7 @@ actShow NoAction = "No action"
 
 -- | Preview an @Action@, similar to @actShow@, except files may be read   to
 --   determine extra information.
-actPreview :: MonadReadFile m => Action -> DocFileResult m T.Text
+actPreview :: MonadReadWorld m => Action -> DocFileResult m T.Text
 actPreview (NoContentAction _ t) = return t
 actPreview (SingleContentAction c _ t) = do
   dryRun <- conPreview c

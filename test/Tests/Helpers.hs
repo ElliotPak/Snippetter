@@ -7,6 +7,7 @@ import qualified Control.Monad.State.Lazy as S
 import Control.Monad.Trans.Except
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Text as T
+import Data.Time.Clock
 import Snippetter.IO
 import System.Exit
 import Test.Tasty.HUnit
@@ -21,7 +22,7 @@ type MockFs = HM.HashMap FilePath T.Text
 
 type MockIO = S.State MockIOState
 
-instance MonadReadFile MockIO where
+instance MonadReadWorld MockIO where
   getFileContents path = do
     state <- S.get
     if HM.member path (mockFilesystem state)
@@ -29,7 +30,7 @@ instance MonadReadFile MockIO where
       else throwE $ NotFound path
   fileExists path = HM.member path . mockFilesystem <$> S.get
 
-instance MonadWorld MockIO where
+instance MonadWriteWorld MockIO where
   writeFile path text = S.modify (writeMockFile path text)
   deleteFile path = S.modify (deleteMockFile path)
   copyFile from to = S.modify (copyMockFile from to)

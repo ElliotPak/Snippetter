@@ -11,6 +11,7 @@ import qualified Data.ByteString.Char8 as B
 import Data.Maybe
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import Data.Time.Clock
 import qualified Data.Yaml as Y
 import Snippetter.Utilities
 import System.Console.ANSI
@@ -69,13 +70,14 @@ type FileResult m a = ExceptT FileError m a
 -- | The result a function that reads and decodes YAML files.
 type YamlResult m a = ExceptT YamlError m a
 
--- | The @MonadReadFile@ class is used to represent monads that can read files.
+-- | The @MonadReadWorld@ class is used to represent monads that can read files.
 --   It can also be used for mocking purposes.
 class Monad m =>
-      MonadReadFile m
+      MonadReadWorld m
   where
   getFileContents :: FilePath -> ExceptT FileError m T.Text
   fileExists :: FilePath -> m Bool
+  fileModifyTime :: FilePath -> m UTCTime
 
 -- | Represents different types of user notification.
 data NotifyType
@@ -84,11 +86,11 @@ data NotifyType
   | Failure
   deriving (Show, Eq)
 
--- | The @MonadWorld@ class is used to represent monads that interact with the
+-- | The @MonadWriteWorld@ class is used to represent monads that interact with the
 --   outside world, in ways that site builder generally should. This mainly
 --   exists for mocking purposes.
-class MonadReadFile m =>
-      MonadWorld m
+class MonadReadWorld m =>
+      MonadWriteWorld m
   where
   writeFile :: FilePath -> T.Text -> ExceptT FileError m ()
   deleteFile :: FilePath -> ExceptT FileError m ()
@@ -100,7 +102,7 @@ class MonadReadFile m =>
 
 -- | Pack @runProcess@ into a FileResult.
 packRunProcess ::
-     MonadWorld m => T.Text -> [T.Text] -> T.Text -> ExceptT FileError m ()
+     MonadWriteWorld m => T.Text -> [T.Text] -> T.Text -> ExceptT FileError m ()
 packRunProcess process args stdin = do
   (x, y, z) <- lift $ runProcess process args stdin
   case x of
@@ -115,11 +117,12 @@ tryIO toDo sucWrap errWrap = do
     Right r -> return $ sucWrap r
     Left l -> throwE $ errWrap l
 
-instance MonadReadFile IO where
+instance MonadReadWorld IO where
   getFileContents path = tryIO (TIO.readFile path) id (rewrapReadError path)
   fileExists = doesFileExist
+  fileModifyTime = getModificationTime
 
-instance MonadWorld IO where
+instance MonadWriteWorld IO where
   writeFile path contents =
     tryIO (TIO.writeFile path contents) id (rewrapWriteError path)
   deleteFile path = tryIO (removeFile path) id (rewrapWriteError path)
@@ -137,15 +140,15 @@ instance MonadWorld IO where
   clearNotify = return ()
 
 -- | Shorthand for @notifyUser InProgress@.
-notifyProgress :: MonadWorld m => T.Text -> m ()
+notifyProgress :: MonadWriteWorld m => T.Text -> m ()
 notifyProgress = notifyUser InProgress
 
 -- | Shorthand for @notifyUser Success@.
-notifySuccess :: MonadWorld m => T.Text -> m ()
+notifySuccess :: MonadWriteWorld m => T.Text -> m ()
 notifySuccess = notifyUser Success
 
 -- | Shorthand for @notifyUser Failure@.
-notifyFailure :: MonadWorld m => T.Text -> m ()
+notifyFailure :: MonadWriteWorld m => T.Text -> m ()
 notifyFailure = notifyUser Failure
 
 -- | Notifies the user by printing to the console.
@@ -189,11 +192,11 @@ decodeYaml str = Y.decodeEither' $ B.pack $ T.unpack str
 -- | Retrieves contents of the specified file, and maps possible errors to a
 --   new type.
 getFileContents' ::
-     MonadReadFile m => FilePath -> (FileError -> e') -> ExceptT e' m T.Text
+     MonadReadWorld m => FilePath -> (FileError -> e') -> ExceptT e' m T.Text
 getFileContents' path func = getFileContents path `mapResultError` func
 
 -- | Loads an Aeson-parsable ADT from the supplied YAML file.
-yamlIfExists :: (MonadReadFile m, Y.FromJSON a) => FilePath -> YamlResult m a
+yamlIfExists :: (MonadReadWorld m, Y.FromJSON a) => FilePath -> YamlResult m a
 yamlIfExists path = do
   contents <- getFileContents' path $ \x -> YamlFileError x
   case decodeYaml contents of

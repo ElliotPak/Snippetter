@@ -81,7 +81,8 @@ data SiteAction
 
 -- | Retrieves contents of the specific file, and maps possible errors to
 --   @LayoutFileError@s.
-fileContentsInLayout :: MonadReadFile m => FilePath -> LayoutFileResult m T.Text
+fileContentsInLayout ::
+     MonadReadWorld m => FilePath -> LayoutFileResult m T.Text
 fileContentsInLayout path = getFileContents path `mapResultError` mapping
   where
     mapping = LayoutFileError
@@ -91,22 +92,22 @@ addPath :: FilePath -> Layout -> PathedLayout
 addPath path layout = PathedLayout layout (Just path)
 
 -- | Load a YAML file as a list of @Layout@s.
-yamlAsLayout :: MonadReadFile m => FilePath -> LayoutFileResult m [Layout]
+yamlAsLayout :: MonadReadWorld m => FilePath -> LayoutFileResult m [Layout]
 yamlAsLayout path =
   let errorMapping = LayoutYamlError
-   in (yamlIfExists path :: MonadReadFile m =>
+   in (yamlIfExists path :: MonadReadWorld m =>
                               YamlResult m [Layout]) `mapResultError`
       errorMapping
 
 -- | Loads a list of pathed layouts from a file.
 loadLayoutFile ::
-     MonadReadFile m => FilePath -> LayoutFileResult m [PathedLayout]
+     MonadReadWorld m => FilePath -> LayoutFileResult m [PathedLayout]
 loadLayoutFile path = do
   y <- yamlAsLayout path
   return $ map (addPath path) y
 
 -- | Actually executes the @SiteAction@ and returns the result for it.
-executeSiteAction' :: MonadWorld m => SiteAction -> LayoutFileResult m ()
+executeSiteAction' :: MonadWriteWorld m => SiteAction -> LayoutFileResult m ()
 executeSiteAction' (Build m pp fp) = do
   executed <- executeBuilder m pp `mapResultError` LayoutDocError
   writeFile fp executed `mapResultError` LayoutFileError
@@ -136,7 +137,7 @@ siteActionName (Move from to) = T.pack from <> "\" to \"" <> T.pack to
 siteActionName (Run process args _) = process <> " " <> T.intercalate " " args
 
 -- | Execute a @SiteAction@ and notify the user of the results.
-executeSiteAction :: MonadWorld m => SiteAction -> m ()
+executeSiteAction :: MonadWriteWorld m => SiteAction -> m ()
 executeSiteAction sa = do
   let name = siteActionName sa
   let (tenseA, tenseB, tenseC) = siteActionTenses sa
@@ -151,7 +152,7 @@ executeSiteAction sa = do
       tenseC <> " \"" <> name <> "\":\n" <> indentFour (T.pack $ show l)
 
 actOnLayoutFile ::
-     MonadWorld m => (SiteAction -> m ()) -> FilePath -> BuilderMap -> m ()
+     MonadWriteWorld m => (SiteAction -> m ()) -> FilePath -> BuilderMap -> m ()
 actOnLayoutFile act path map = do
   actions <- runExceptT $ loadSiteActions path map
   case actions of
@@ -162,7 +163,7 @@ actOnLayoutFile act path map = do
       T.pack path <> "\":\n" <> indentFour (T.pack $ show l)
 
 -- | Load a layout file and execute all @SiteAction@s resulting from it.
-executeLayoutFile :: MonadWorld m => FilePath -> BuilderMap -> m ()
+executeLayoutFile :: MonadWriteWorld m => FilePath -> BuilderMap -> m ()
 executeLayoutFile = actOnLayoutFile executeSiteAction
 
 -- | Converts a @PathedLayout@ to a @SiteAction@, when given a mapping of
@@ -187,7 +188,7 @@ layoutToAction map (PathedLayout layout input) = ll input layout
 -- | Loads a list of @SiteAction@ from a file, when given a mapping of strings
 --   to builders
 loadSiteActions ::
-     MonadReadFile m
+     MonadReadWorld m
   => FilePath
   -> BuilderMap
   -> LayoutFileResult m [SiteAction]
@@ -196,7 +197,8 @@ loadSiteActions path map = do
   liftEither $ mapM (layoutToAction map) layout
 
 -- | Determine files needed to execute a @SiteAction@.
-saNeededFiles :: MonadReadFile m => SiteAction -> LayoutFileResult m FilePathSet
+saNeededFiles ::
+     MonadReadWorld m => SiteAction -> LayoutFileResult m FilePathSet
 saNeededFiles (Build m pp f) =
   filesForBuilder m pp `mapResultError` LayoutDocError
 saNeededFiles (Copy from to) = return $ HS.singleton from

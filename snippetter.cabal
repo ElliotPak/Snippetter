@@ -15,7 +15,8 @@ library
                        Snippetter.Utilities,
                        Snippetter.IO,
                        Snippetter.Layout,
-                       Snippetter.Build
+                       Snippetter.Build,
+                       Snippetter.FileGraph
   build-depends:       base >=4.12 && <4.13,
                        yaml >=0.11 && <0.12,
                        aeson >=1.4 && <1.5,

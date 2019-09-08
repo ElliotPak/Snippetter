@@ -140,6 +140,18 @@ testBuildingGraphs =
           , ("nay", HS.singleton "foo")
           , ("bray", HS.singleton "foo")
           ]
+  , testCase "Looping graph" $ do
+      let mappings =
+            [ ("foo", HS.fromList ["bar", "asdf"])
+            , ("bar", HS.singleton "yay")
+            , ("yay", HS.singleton "foo")
+            , ("asdf", HS.singleton "hjkl")
+            ]
+      let graph = FG.graphFromChildren mappings
+      FG.files graph @?= HS.fromList ["hjkl", "foo", "bar", "yay", "asdf"]
+      FG.notEmptyParentToChild graph @?= HM.fromList mappings
+      FG.notEmptyChildToParent graph @?=
+        HM.fromList [("bar", HS.singleton "foo"), ("baz", HS.singleton "foo")]
   ]
 
 testCheckChildren =

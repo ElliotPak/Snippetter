@@ -1,8 +1,11 @@
 -- | A graph, used for site dependency management.
 module Snippetter.FileGraph where
 
+import Control.Monad
+import Control.Monad.State
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
+import Data.List
 import Data.Maybe
 import qualified Data.Text as T
 import Snippetter.Build
@@ -34,6 +37,7 @@ data FileGraph =
     , parentToChild :: FileMapping
     , childToParent :: FileMapping
     }
+  deriving (Show, Eq)
 
 -- | Get parent-to-child mappings, excluding files that have no children.
 notEmptyParentToChild :: FileGraph -> FileMapping
@@ -56,7 +60,7 @@ invertMapping parent children = HM.fromList $ map inverse $ HS.toList children
 -- | Update the file set if it exists, or insert a new one if it doesn't.
 addOrAdjust :: FilePath -> FilePathSet -> FileMapping -> FileMapping
 addOrAdjust key set map =
-  if HM.member key map && not (HS.null set)
+  if HM.member key map
     then HM.adjust (HS.union set) key map
     else HM.insert key set map
 
@@ -103,9 +107,9 @@ addChild newParent newChildren graph = FileGraph newFiles newP2C newC2P
 -- file already exists, the children will be added to the ones that already
 -- exist.
 addChildren :: [(FilePath, FilePathSet)] -> FileGraph -> FileGraph
-addChildren mappings graph = foldl add graph mappings
+addChildren mappings graph = foldr add graph mappings
   where
-    add graph (path, children) = addChild path children graph
+    add (path, children) = addChild path children
 
 -- | Returns the set of children of the given file.
 getChildren :: FilePath -> FileGraph -> Maybe FilePathSet

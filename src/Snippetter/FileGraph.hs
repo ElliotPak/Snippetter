@@ -139,6 +139,10 @@ isUpToDate file graph =
 -- | Checks if the first file is older than the second.
 isOlder :: MonadReadWorld m => FilePath -> FilePath -> m Bool
 isOlder target dep = do
-  targetDate <- fileModifyTime target
-  depDate <- fileModifyTime dep
-  return $ targetDate > depDate
+  targetExists <- fileExists target
+  if not targetExists
+    then return True
+    else do
+      targetDate <- fileModifyTime target
+      depDate <- fileModifyTime dep
+      return $ targetDate > depDate

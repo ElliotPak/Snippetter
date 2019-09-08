@@ -150,3 +150,84 @@ isOlder target dep = do
       targetDate <- fileModifyTime target
       depDate <- fileModifyTime dep
       return $ targetDate > depDate
+
+-- | Get a list of strongly connected components in a graph. If there are none,
+-- it's acyclic.
+getSCC :: FileGraph -> [SCComponent]
+getSCC graph =
+  filter (\a -> length a > 1) $ sccComponents $ execState stateFunc init
+  where
+    init = SCCState graph 0 HM.empty [] []
+    stateFunc = do
+      state <- get
+      let graph = sccGraph state
+      forM_ (HS.toList $ files graph) $ \child ->
+        if not (child `HM.member` sccMappings state)
+          then sccPerNode child
+          else modify id
+      return $ sccComponents state
+
+data SCCState =
+  SCCState
+    { sccGraph :: FileGraph
+    , sccIndex :: Int
+    , sccMappings :: HM.HashMap FilePath (Int, Int)
+    , sccStack :: [FilePath]
+    , sccComponents :: [SCComponent]
+    }
+  deriving (Show, Eq)
+
+type SCComponent = [FilePath]
+
+sccPerNode :: FilePath -> State SCCState ()
+sccPerNode node = do
+  state <- get
+  let graph = sccGraph state
+  let children = parentToChild graph HM.! node
+  modify $ sccInitial node
+  forM_ (HS.toList children) $ \child ->
+    if not (child `HM.member` sccMappings state)
+      then do
+        sccPerNode child
+        modify $ sccUnDefMod node child
+      else if child `elem` sccStack state
+             then modify $ sccOnStackMod node child
+             else modify id
+  modify $ sccAddComponent node
+
+sccUnDefMod :: FilePath -> FilePath -> SCCState -> SCCState
+sccUnDefMod v w state = state {sccMappings = HM.adjust mod v mappings}
+  where
+    mappings = sccMappings state
+    (vInd, vLow) = mappings HM.! v
+    (wInd, wLow) = mappings HM.! w
+    mod _ = (vInd, min vLow wLow)
+
+sccOnStackMod :: FilePath -> FilePath -> SCCState -> SCCState
+sccOnStackMod v w state = state {sccMappings = HM.adjust mod v mappings}
+  where
+    mappings = sccMappings state
+    (vInd, vLow) = mappings HM.! v
+    (wInd, wLow) = mappings HM.! w
+    mod _ = (vInd, min vLow wInd)
+
+sccInitial :: FilePath -> SCCState -> SCCState
+sccInitial node state =
+  state
+    { sccIndex = newInd
+    , sccMappings = HM.insert node (newInd, newInd) $ sccMappings state
+    , sccStack = sccStack state ++ [node]
+    }
+  where
+    newInd = sccIndex state + 1
+
+sccAddComponent :: FilePath -> SCCState -> SCCState
+sccAddComponent node state =
+  if ind == low
+    then state {sccStack = newStack, sccComponents = newComponents}
+    else state
+  where
+    (ind, low) = sccMappings state HM.! node
+    stackInd = unJust $ elemIndex node (sccStack state)
+    (newStack, change) = splitAt stackInd (sccStack state)
+    newComponents = change : sccComponents state

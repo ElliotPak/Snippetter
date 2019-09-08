@@ -61,6 +61,10 @@ unRight :: Maybe a -> a
 unRight (Just x) = x
 unRight _ = error "unRight on left value"
 
+unJust :: Maybe a -> a
+unJust (Just a) = a
+unJust _ = error "unJust on Nothing"
+
 -- | Maps the Left value of an Either.
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f (Left x) = Left $ f x

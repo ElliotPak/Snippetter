@@ -21,6 +21,7 @@ tests =
   , testGroup "Building Graphs" testBuildingGraphs
   , testGroup "Checking Children" testCheckChildren
   , testGroup "Checking Parents" testCheckParents
+  , testGroup "Checking SCC" testCheckSCC
   ]
 
 testGettingParentsAndChildren = do
@@ -185,3 +186,40 @@ testCheckParents =
         [ ("foo", HS.fromList ["bar", "baz"])
         , ("yay", HS.fromList ["nay", "bray"])
         ]
+
+testCheckSCC =
+  [ testCase "Empty graph" $ FG.getSCC FG.empty @?= []
+  , testCase "Acyclic graph" $
+    FG.getSCC
+      (FG.graphFromChildren
+         [("foo", HS.fromList ["bar"]), ("bar", HS.singleton "yay")]) @?=
+    []
+  , testCase "Looping graph 1" $
+    FG.getSCC
+      (FG.graphFromChildren
+         [("foo", HS.fromList ["bar"]), ("bar", HS.singleton "foo")]) @?=
+    [["foo", "bar"]]
+  , testCase "Looping graph 2" $
+    FG.getSCC
+      (FG.graphFromChildren
+         [ ("foo", HS.fromList ["bar", "asdf"])
+         , ("bar", HS.singleton "yay")
+         , ("yay", HS.singleton "foo")
+         , ("asdf", HS.singleton "hjkl")
+         ]) @?=
+    [["foo", "bar", "yay"]]
+  , testCase "Self loop" $
+    FG.getSCC (FG.graphFromChildren [("foo", HS.fromList ["foo"])]) @?=
+    [["foo"]]
+  , testCase "Multiple loops" $
+    FG.getSCC
+      (FG.graphFromChildren
+         [ ("foo", HS.fromList ["bar", "asdf"])
+         , ("bar", HS.singleton "yay")
+         , ("yay", HS.singleton "foo")
+         , ("asdf", HS.singleton "hjkl")
+         , ("hjkl", HS.singleton "zxcv")
+         , ("zxcv", HS.singleton "asdf")
+         ]) @?=
+    [["foo", "bar", "yay"], ["hjkl", "zxcv", "asdf"]]
+  ]

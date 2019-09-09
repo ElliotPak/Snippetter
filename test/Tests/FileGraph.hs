@@ -152,7 +152,13 @@ testBuildingGraphs =
       FG.files graph @?= HS.fromList ["hjkl", "foo", "bar", "yay", "asdf"]
       FG.notEmptyParentToChild graph @?= HM.fromList mappings
       FG.notEmptyChildToParent graph @?=
-        HM.fromList [("bar", HS.singleton "foo"), ("baz", HS.singleton "foo")]
+        HM.fromList
+          [ ("hjkl", HS.singleton "asdf")
+          , ("foo", HS.singleton "yay")
+          , ("yay", HS.singleton "bar")
+          , ("bar", HS.singleton "foo")
+          , ("asdf", HS.singleton "foo")
+          ]
   ]
 
 testCheckChildren =

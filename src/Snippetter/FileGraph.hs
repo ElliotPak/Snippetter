@@ -151,11 +151,16 @@ isOlder target dep = do
       depDate <- fileModifyTime dep
       return $ targetDate > depDate
 
+-- | Checks if the node is its own parent.
+isOwnParent :: FilePath -> FileGraph -> Bool
+isOwnParent node graph = node `HS.member` (parentToChild graph HM.! node)
+
 -- | Get a list of strongly connected components in a graph. If there are none,
--- it's acyclic.
+-- it's acyclic. Also includes nodes that reference themselves.
 getSCC :: FileGraph -> [SCComponent]
 getSCC graph =
-  filter (\a -> length a > 1) $ sccComponents $ execState stateFunc init
+  filter (\a -> length a > 1 || (length a == 1 && isOwnParent (head a) graph)) $
+  sccComponents $ execState stateFunc init
   where
     init = SCCState graph 0 HM.empty [] []
     stateFunc = do
@@ -181,10 +186,10 @@ type SCComponent = [FilePath]
 
 sccPerNode :: FilePath -> State SCCState ()
 sccPerNode node = do
+  modify $ sccInitial node
   state <- get
   let graph = sccGraph state
   let children = parentToChild graph HM.! node
-  modify $ sccInitial node
   forM_ (HS.toList children) $ \child ->
     if not (child `HM.member` sccMappings state)
       then do

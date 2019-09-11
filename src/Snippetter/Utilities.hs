@@ -57,8 +57,8 @@ paramUnion :: Params -> Params -> Params
 paramUnion = HM.union
 
 -- | Retrieves the value from a @Maybe@ if it's @Just@, and errors otherwise.
-unRight :: Maybe a -> a
-unRight (Just x) = x
+unRight :: Either e a -> a
+unRight (Right x) = x
 unRight _ = error "unRight on left value"
 
 unJust :: Maybe a -> a

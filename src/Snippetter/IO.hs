@@ -51,7 +51,7 @@ instance Show FileError where
     "The following error occurred in \"" <>
     file <> "\":" <> show (ioeGetErrorType e)
     where
-      file = unRight $ ioeGetFileName e <|> Just f
+      file = unJust $ ioeGetFileName e <|> Just f
 
 -- | Possible errors when decoding YAML from a file.
 data YamlError
@@ -178,7 +178,7 @@ rewrapReadError defaultPath e
   | isAlreadyInUseError e = IsInUse path
   | otherwise = OtherFileError path e
   where
-    path = unRight $ ioeGetFileName e <|> Just defaultPath
+    path = unJust $ ioeGetFileName e <|> Just defaultPath
 
 -- | Wrap an IOException in a FileError. Used when modifying files.
 rewrapWriteError :: FilePath -> IOException -> FileError
@@ -189,7 +189,7 @@ rewrapWriteError defaultPath e
   | isAlreadyInUseError e = IsInUse path
   | otherwise = OtherFileError path e
   where
-    path = unRight $ ioeGetFileName e <|> Just defaultPath
+    path = unJust $ ioeGetFileName e <|> Just defaultPath
 
 -- | Decodes an Aeson-parsable ADT from the supplied text.
 decodeYaml :: Y.FromJSON a => T.Text -> Either Y.ParseException a

@@ -16,12 +16,9 @@ import Snippetter.IO
 import Snippetter.Utilities
 import System.Directory (doesFileExist)
 
--- | Shorthand for a list of @Action@.
-type Doc = [Action]
-
 -- | Possible errors when a page is being built.
 data DocError
-  = DocBuilderError BuilderError (Maybe FilePath)
+  = DocBuilderError BuilderError NamedBuilder (Maybe FilePath)
   | DocFileError FileError
   | DocYamlError YamlError
   | MissingBuilder T.Text
@@ -30,9 +27,9 @@ data DocError
   deriving (Eq)
 
 instance Show DocError where
-  show (DocBuilderError e fp) =
-    "While executing a builder with parameters from " <>
-    f <> ":\n" <> indentFourStr (show e)
+  show (DocBuilderError e nb fp) =
+    "While executing " <>
+    show nb <> " with parameters from " <> f <> ":\n" <> indentFourStr (show e)
     where
       f =
         case fp of
@@ -54,6 +51,24 @@ type BuilderResult = Either BuilderError Content
 
 -- | Shorthand for a @Builder@'s type signature.
 type Builder = Params -> BuilderResult
+
+-- | A @Builder@ with an optional name.
+data NamedBuilder
+  = NamedBuilder T.Text Builder
+  | UnnamedBuilder Builder
+
+instance Eq NamedBuilder where
+  (NamedBuilder t1 _) == (NamedBuilder t2 _) = t1 == t2
+  _ == _ = False
+
+instance Show NamedBuilder where
+  show (NamedBuilder t _) = "a builder named " <> T.unpack t
+  show (UnnamedBuilder _) = "an unnamed builder"
+
+-- | Extract the @Builder@ from a @NamedBuilder@.
+extractBuilder :: NamedBuilder -> Builder
+extractBuilder (NamedBuilder _ b) = b
+extractBuilder (UnnamedBuilder b) = b
 
 -- | A @Params@ value that may have a file path associated with it.
 --   If loaded from a file, the path should be assigned when doing so.
@@ -105,35 +120,35 @@ paramsFromFile file = do
 -- | Create a @Doc@ by running a @Builder@, using the values of a YAML collection
 --   as its parameters.
 builderWithParamsFile ::
-     MonadReadWorld m => Builder -> FilePath -> DocResult m Content
+     MonadReadWorld m => NamedBuilder -> FilePath -> DocResult m Content
 builderWithParamsFile builder path = do
   fromFile <- paramsFromFile path
   builderWithParams builder fromFile
 
 -- | Create a @Doc@ by running a @Builder@ consecutively, using each entry in the
 --   PathedParams list as parameters.
-builderWithParams :: Monad m => Builder -> [PathedParams] -> DocResult m Content
+builderWithParams ::
+     Monad m => NamedBuilder -> [PathedParams] -> DocResult m Content
 builderWithParams b v = do
   mapped <- mapM (buildDoc b) v
   return $ ContentList mapped
 
 -- | Build a @Doc@ by running a @Builder@ with the given parameters.
-buildDoc :: Monad m => Builder -> PathedParams -> DocResult m Content
-buildDoc b (PathedParams params path) =
+buildDoc :: Monad m => NamedBuilder -> PathedParams -> DocResult m Content
+buildDoc nb (PathedParams params path) =
   mapResultError (resultLiftEither $ b params) $ convertBuilderError path
   where
-    convertBuilderError path err = DocBuilderError err path
+    b = extractBuilder nb
+    convertBuilderError path err = DocBuilderError err nb path
 
 -- | Evaluates the given @Builder@ to text with the given parameters.
 executeBuilder ::
-     MonadReadWorld m => Builder -> PathedParams -> DocResult m T.Text
-executeBuilder b pp = do
-  doc <- buildDoc b pp
-  conEvaluate doc
+     MonadReadWorld m => NamedBuilder -> PathedParams -> DocResult m T.Text
+executeBuilder b pp = buildDoc b pp >>= conEvaluate
 
 -- | Determines files needed to run the @Builder@ with the given parameters.
 filesForBuilder ::
-     MonadReadWorld m => Builder -> PathedParams -> DocResult m FilePathSet
+     MonadReadWorld m => NamedBuilder -> PathedParams -> DocResult m FilePathSet
 filesForBuilder b pp = buildDoc b pp >>= conNeededFiles
 
 -- | Represents operations that evaluate to text.
@@ -252,7 +267,7 @@ actListExecute xs text = foldM (flip actExecute) text xs
 --   on.
 data SubBuilderExec =
   SubBuilderExec
-    { smBuilder :: Builder
+    { smBuilder :: NamedBuilder
     , smDefault :: Params
     , smParams :: [PathedParams]
     , smFiles :: FilePathSet
@@ -458,10 +473,10 @@ replaceText t1 t2 = replace t1 $ text t2
 
 -- | Public function for creating a @SubBuilder@ with just one @SubBuilderExec@.
 singleSubBuilder ::
-     Builder -> Params -> [PathedParams] -> FilePathSet -> Content
+     NamedBuilder -> Params -> [PathedParams] -> FilePathSet -> Content
 singleSubBuilder m p pp fp = SubBuilder $ SubBuilderExec m p pp fp
 
 -- | Shorthand for creating a @SubBuilder@ that executes the builder on one file.
-subBuilderOnFile :: Builder -> FilePath -> Content
+subBuilderOnFile :: NamedBuilder -> FilePath -> Content
 subBuilderOnFile m f =
   subBuilder $ SubBuilderExec m emptyParams [] (HS.singleton f)

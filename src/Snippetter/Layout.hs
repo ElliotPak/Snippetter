@@ -32,7 +32,14 @@ instance Show LayoutError where
 type LayoutResult m a = Result LayoutError m a
 
 -- | A map of @T.Text@ to @Builder@s.
-type BuilderMap = HM.HashMap T.Text Builder
+type BuilderMap = HM.HashMap T.Text NamedBuilder
+
+insertNamedBuilder :: T.Text -> Builder -> BuilderMap -> BuilderMap
+insertNamedBuilder name builder = HM.insert name (NamedBuilder name builder)
+
+insertNamedBuilders :: [(T.Text, Builder)] -> BuilderMap -> BuilderMap
+insertNamedBuilders bindings bmap =
+  foldr (uncurry insertNamedBuilder) bmap bindings
 
 -- | Site actions as immediately loaded from a YAML file.
 data Layout
@@ -71,11 +78,12 @@ data PathedLayout =
 
 -- | Describes an action taken to build the site.
 data SiteAction
-  = Build Builder PathedParams FilePath
+  = Build NamedBuilder PathedParams FilePath
   | Copy FilePath FilePath
   | Move FilePath FilePath
   | Delete FilePath
   | Run T.Text [T.Text] T.Text
+  deriving (Show, Eq)
 
 -- | Retrieves contents of the specific file, and maps possible errors to
 --   @LayoutFileError@s.

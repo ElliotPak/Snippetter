@@ -30,16 +30,22 @@ tests =
   , testGroup "Resolving" testSubBuilderEvaluate
   ]
 
-basicBuilder :: Builder
-basicBuilder params = do
+basicBuilder = UnnamedBuilder basicBuilder'
+
+basicBuilder' :: Builder
+basicBuilder' params = do
   temp <- lookupText "title" params
   return $ text temp
 
-sameFileBuilder :: Builder
-sameFileBuilder params = return $ Snippet "foo"
+sameFileBuilder = UnnamedBuilder sameFileBuilder'
 
-fileBuilder :: Builder
-fileBuilder params = do
+sameFileBuilder' :: Builder
+sameFileBuilder' params = return $ Snippet "foo"
+
+fileBuilder = UnnamedBuilder fileBuilder'
+
+fileBuilder' :: Builder
+fileBuilder' params = do
   temp <- lookupText "title" params
   return $ Snippet $ T.unpack temp
 

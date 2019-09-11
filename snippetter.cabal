@@ -16,7 +16,8 @@ library
                        Snippetter.IO,
                        Snippetter.Layout,
                        Snippetter.Build,
-                       Snippetter.FileGraph
+                       Snippetter.FileGraph,
+                       Snippetter.DepManager
   build-depends:       base >=4.12 && <4.13,
                        yaml >=0.11 && <0.12,
                        aeson >=1.4 && <1.5,
@@ -56,4 +57,6 @@ test-suite test-snippetter
                   Tests.Content,
                   Tests.Utilities,
                   Tests.MiscBuild,
-                  Tests.SubBuilder
+                  Tests.SubBuilder,
+                  Tests.FileGraph,
+                  Tests.DepManager

@@ -90,6 +90,17 @@ addBlankEntries :: FilePathSet -> FileMapping -> FileMapping
 addBlankEntries children mapping =
   foldr addBlankEntry mapping $ HS.toList children
 
+-- | Add a file to the graph without any parent-child relationship.
+addFile :: FilePath -> FileGraph -> FileGraph
+addFile newChild graph = FileGraph newFiles newP2C newC2P
+  where
+    newFiles = HS.unions [HS.singleton newChild, files graph]
+    newP2C = addBlankEntry newChild $ parentToChild graph
+    newC2P = addBlankEntry newChild $ childToParent graph
+
+addFiles :: FilePathSet -> FileGraph -> FileGraph
+addFiles mappings graph = foldr addFile graph mappings
+
 -- | Adds a mapping to an existing FileGraph. If a mapping for that file
 -- already exists, the children will be added to the ones that already exist.
 addChild :: FilePath -> FilePathSet -> FileGraph -> FileGraph
@@ -140,6 +151,13 @@ isUpToDate file graph =
       results <- resultLift $ mapM (isOlder file) (HS.toList p)
       return $ and results
 
+-- | Checks if a set of files in the graph are up to date.
+areUpToDate ::
+     MonadReadWorld m => FilePathSet -> FileGraph -> GraphResult m Bool
+areUpToDate targets graph = do
+  list <- mapM (`isUpToDate` graph) (HS.toList targets)
+  return $ and list
+
 -- | Checks if the first file is older than the second.
 isOlder :: MonadReadWorld m => FilePath -> FilePath -> m Bool
 isOlder target dep = do
@@ -156,7 +174,8 @@ isOwnParent :: FilePath -> FileGraph -> Bool
 isOwnParent node graph = node `HS.member` (parentToChild graph HM.! node)
 
 -- | Get a list of strongly connected components in a graph. If there are none,
--- it's acyclic. Also includes nodes that reference themselves.
+-- it's acyclic. Does not include single-filepath components unless that
+-- filepath has itself as its parent.
 getSCC :: FileGraph -> [SCComponent]
 getSCC graph =
   filter (\a -> length a > 1 || (length a == 1 && isOwnParent (head a) graph)) $

@@ -4,8 +4,10 @@ module Snippetter.IO where
 
 import Control.Applicative
 import Control.Exception
+import Control.Monad
 import Control.Monad.Trans
 import qualified Data.ByteString.Char8 as B
+import Data.List
 import Data.Maybe
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
@@ -15,6 +17,7 @@ import Snippetter.Utilities
 import System.Console.ANSI
 import System.Directory
 import System.Exit
+import System.FilePath.Posix
 import System.IO.Error
 import System.Process hiding (runProcess)
 
@@ -75,6 +78,8 @@ class Monad m =>
   where
   getFileContents :: FilePath -> FileResult m T.Text
   fileExists :: FilePath -> m Bool
+  dirExists :: FilePath -> m Bool
+  directoryContents :: FilePath -> FileResult m [FilePath]
   fileModifyTime :: FilePath -> m UTCTime
 
 -- | Represents different types of user notification.
@@ -118,7 +123,10 @@ tryIO toDo sucWrap errWrap = do
 instance MonadReadWorld IO where
   getFileContents path = tryIO (TIO.readFile path) id (rewrapReadError path)
   fileExists = doesFileExist
+  dirExists = doesDirectoryExist
   fileModifyTime = getModificationTime
+  directoryContents path =
+    tryIO (getDirectoryContents path) id (rewrapReadError path)
 
 instance MonadWriteWorld IO where
   writeFile path contents =
@@ -200,3 +208,26 @@ yamlIfExists path = do
   case decodeYaml contents of
     Left l -> resultE $ InvalidYamlFormat path
     Right r -> return r
+
+-- | Get all files in a directory recursively.
+-- Adapted from http://book.realworldhaskell.org/read/io-case-study-a-library-for-searching-the-filesystem.html
+pathWalk :: MonadReadWorld m => FilePath -> FileResult m [FilePath]
+pathWalk folder = do
+  names <- directoryContents folder
+  let properNames = filter (`notElem` [".", ".."]) names
+  paths <-
+    forM properNames $ \name -> do
+      let path = folder </> name
+      isDirectory <- resultLift $ dirExists path
+      if isDirectory
+        then pathWalk path
+        else return [path]
+  return (concat paths)
+
+-- | Get all files in a directory recursively if they end in the given suffix.
+pathWalkEndingIn ::
+     MonadReadWorld m => FilePath -> FilePath -> FileResult m [FilePath]
+pathWalkEndingIn folder ending = do
+  walked <- pathWalk folder
+  let f = isSuffixOf ending
+  return $ filter f walked

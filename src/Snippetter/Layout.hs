@@ -194,3 +194,11 @@ saNeededFiles (Copy from to) = return $ HS.singleton from
 saNeededFiles (Move from to) = return $ HS.singleton from
 saNeededFiles (Delete file) = return $ HS.singleton file
 saNeededFiles (Run process args stdin) = return HS.empty
+
+-- | Determine the output file of a @SiteAction@.
+saOutputFile :: SiteAction -> Maybe FilePath
+saOutputFile (Build m pp f) = Just f
+saOutputFile (Copy from to) = Just to
+saOutputFile (Move from to) = Just to
+saOutputFile (Delete file) = Nothing
+saOutputFile (Run process args stdin) = Nothing

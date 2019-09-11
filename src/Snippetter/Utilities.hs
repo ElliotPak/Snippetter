@@ -100,6 +100,10 @@ indentWithListMarker text = indentText 2 (h <> t)
     t = T.unlines $ (map (indentText 2) . tail) lines
     h = "- " <> head lines <> "\n"
 
+indentMultiWithListMarker :: [T.Text] -> T.Text
+indentMultiWithListMarker markers =
+  T.intercalate "\n" (map indentWithListMarker markers)
+
 -- | Indent a Text by 4 spaces.
 indentFour :: T.Text -> T.Text
 indentFour = indentText 4

@@ -204,6 +204,15 @@ data SCCState =
 
 type SCComponent = [FilePath]
 
+showSCC :: [SCComponent] -> T.Text
+showSCC scc = indentMultiWithListMarker $ map showSingleSCC scc
+
+showSingleSCC :: SCComponent -> T.Text
+showSingleSCC component =
+  T.pack (foldr foo "" component <> "\"" <> head component <> "\"")
+  where
+    foo prev comp = "\"" <> prev <> "\" -> " <> comp
+
 sccPerNode :: FilePath -> State SCCState ()
 sccPerNode node = do
   modify $ sccInitial node

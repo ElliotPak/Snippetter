@@ -174,7 +174,7 @@ testTransformErrorEvaluate =
   [ testCase "Child successfully evaluated, transform succeeds" $
     passIO (conEvaluate transErrNoFile) (T.pack "test baz")
   , testCase "Child successfully evaluated, transform fails" $
-    failIO (conEvaluate transErrNoFileFail) (MiscDocError "idk")
+    failIO (conEvaluate transErrNoFileFail) (TransformFailed "idk")
   , testCase "Child unsuccessfully evaluated, transform succeeds" $
     failMockFiles
       filesMissing

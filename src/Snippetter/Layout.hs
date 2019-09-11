@@ -22,10 +22,11 @@ data LayoutError
   deriving (Eq)
 
 instance Show LayoutError where
-  show (LayoutDocError e) = "While building a page:\n" <> indentFourStr (show e)
-  show (LayoutYamlError e) = "While decoding YAML:\n" <> indentFourStr (show e)
-  show (LayoutFileError e) = "While reading a file:\n" <> indentFourStr (show e)
-  show (MiscLayoutError t) = "An error occured:" <> T.unpack t
+  show (LayoutDocError e) = show e
+  show (LayoutYamlError e) = show e
+  show (LayoutFileError e) = show e
+  show (MiscLayoutError t) =
+    "An error occured in the layout processing phase:" <> T.unpack t
 
 -- | The result of a function that makes/executes a @SiteAction@ and can read files.
 type LayoutResult m a = Result LayoutError m a
@@ -47,14 +48,16 @@ instance Y.FromJSON Layout where
     Y.withObject "LayoutFile" $ \o -> do
       kind <- o .: T.pack "type"
       case T.unpack kind of
-        "builder" ->
-          LayoutBuild <$> o .: T.pack "output" <*> o .: T.pack "builder-name" <*>
-          o .: T.pack "values"
+        "build" ->
+          LayoutBuild <$> o .: T.pack "output-file" <*>
+          o .: T.pack "builder-name" <*>
+          o .: T.pack "parameters"
         "copy" -> LayoutCopy <$> o .: T.pack "from" <*> o .: T.pack "to"
         "move" -> LayoutMove <$> o .: T.pack "from" <*> o .: T.pack "to"
         "delete" -> LayoutDelete <$> o .: T.pack "file"
         "run-process" ->
           LayoutRunProcess <$> o .: T.pack "process" <*> o .: T.pack "stdin"
+        _ -> fail "not a valid layout file type"
 
 -- | A Layout value that may have a file path associated with it.
 --   If loaded from a file, the path should be assigned when doing so.
@@ -89,8 +92,8 @@ addPath path layout = PathedLayout layout (Just path)
 yamlAsLayout :: MonadReadWorld m => FilePath -> LayoutResult m [Layout]
 yamlAsLayout path =
   let errorMapping = LayoutYamlError
-   in (yamlIfExists path :: MonadReadWorld m =>
-                              YamlResult m [Layout]) `mapResultError`
+   in (yamlIfExists "List of layouts" path :: MonadReadWorld m =>
+                                                YamlResult m [Layout]) `mapResultError`
       errorMapping
 
 -- | Loads a list of pathed layouts from a file.

@@ -22,10 +22,11 @@ data GraphError
   deriving (Eq)
 
 instance Show GraphError where
-  show (GraphFileError e) = "While reading a file:\n" <> indentFourStr (show e)
+  show (GraphFileError e) = show e
   show (MissingKey k) =
     "The following key was missing from the file graph: " <> k
-  show (OtherGraphError t) = "A YAML error occured: " <> T.unpack t
+  show (OtherGraphError t) =
+    "An error occured while determining dependencies: " <> T.unpack t
 
 type GraphResult m a = Result GraphError m a
 

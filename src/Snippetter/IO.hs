@@ -56,13 +56,15 @@ instance Show FileError where
 -- | Possible errors when decoding YAML from a file.
 data YamlError
   = YamlFileError FileError
-  | InvalidYamlFormat FilePath
+  | InvalidYamlFormat T.Text T.Text
   | OtherYamlError FilePath T.Text
   deriving (Eq)
 
 instance Show YamlError where
-  show (YamlFileError e) = "While reading a file:\n" <> indentFourStr (show e)
-  show (InvalidYamlFormat f) = "The YAML wasn't in the correct format."
+  show (YamlFileError e) = show e
+  show (InvalidYamlFormat f t) =
+    "The following YAML doesn't represent \"" <>
+    T.unpack f <> "\": \n" <> T.unpack (indentFour t)
   show (OtherYamlError f t) = "A YAML error occured: " <> T.unpack t
 
 -- | The result a function that reads files.
@@ -202,11 +204,12 @@ getFileContents' ::
 getFileContents' path func = getFileContents path `mapResultError` func
 
 -- | Loads an Aeson-parsable ADT from the supplied YAML file.
-yamlIfExists :: (MonadReadWorld m, Y.FromJSON a) => FilePath -> YamlResult m a
-yamlIfExists path = do
+yamlIfExists ::
+     (MonadReadWorld m, Y.FromJSON a) => T.Text -> FilePath -> YamlResult m a
+yamlIfExists datatype path = do
   contents <- getFileContents' path $ \x -> YamlFileError x
   case decodeYaml contents of
-    Left l -> resultE $ InvalidYamlFormat path
+    Left l -> resultE $ InvalidYamlFormat datatype contents
     Right r -> return r
 
 -- | Get all files in a directory recursively.

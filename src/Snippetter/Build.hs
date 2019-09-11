@@ -25,6 +25,7 @@ data DocError
   | DocFileError FileError
   | DocYamlError YamlError
   | MissingBuilder T.Text
+  | TransformFailed T.Text
   | MiscDocError T.Text
   deriving (Eq)
 
@@ -37,11 +38,13 @@ instance Show DocError where
         case fp of
           Nothing -> "a Haskell source file"
           Just a -> "the YAML file \"" <> a <> "\""
-  show (DocYamlError e) = "While decoding YAML:\n" <> indentFourStr (show e)
-  show (DocFileError e) = "While reading a file:\n" <> indentFourStr (show e)
+  show (DocYamlError e) = show e
+  show (DocFileError e) = show e
+  show (TransformFailed t) =
+    "Transforming some content failed with the following: " <> T.unpack t
   show (MissingBuilder t) =
     "The builder \"" <> T.unpack t <> "\" was missing from the builder map."
-  show (MiscDocError t) = "An error occured:" <> T.unpack t
+  show (MiscDocError t) = "An error occured while building:" <> T.unpack t
 
 -- | The result a function that builds a page and can read files.
 type DocResult m a = Result DocError m a
@@ -72,7 +75,7 @@ data BuilderError
 instance Show BuilderError where
   show (AbsentKey t) = "The key \"" <> T.unpack t <> "\" was missing."
   show (WrongKeyType t) = "The key \"" <> T.unpack t <> "\" was the wrong type."
-  show (MiscBuilderError t) = "An error occured: " <> T.unpack t
+  show (MiscBuilderError t) = "An error occured while building: " <> T.unpack t
 
 -- | Shorthand for @HashSet FilePath@.
 type FilePathSet = HS.HashSet FilePath
@@ -88,8 +91,8 @@ fileContentsInDoc path = getFileContents path `mapResultError` mapping
 yamlAsParams :: MonadReadWorld m => FilePath -> DocResult m [Params]
 yamlAsParams path =
   let errorMapping = DocYamlError
-   in (yamlIfExists path :: MonadReadWorld m =>
-                              YamlResult m [Params]) `mapResultError`
+   in (yamlIfExists "List of parameters" path :: MonadReadWorld m =>
+                                                   YamlResult m [Params]) `mapResultError`
       errorMapping
 
 -- | Load all paramaters from a (possible) paramater file as @PathedParams@.
@@ -225,7 +228,7 @@ conEvaluate (Transform c f) = do
   return $ f sub
 conEvaluate (TransformError c f) = do
   sub <- conEvaluate c
-  resultLiftEither $ mapLeft MiscDocError $ f sub
+  resultLiftEither $ mapLeft TransformFailed $ f sub
 conEvaluate (SubBuilder sme) = smEvaluate sme
 conEvaluate (Doc c d) = do
   initial <- conEvaluate c

@@ -22,6 +22,7 @@ tests =
   , testGroup "Checking Children" testCheckChildren
   , testGroup "Checking Parents" testCheckParents
   , testGroup "SCC" testCheckSCC
+  , testGroup "Roots" testRoots
   ]
 
 testGettingParentsAndChildren = do
@@ -231,3 +232,37 @@ testCheckSCC =
          ]) @?=
     [["foo", "bar", "yay"], ["hjkl", "zxcv", "asdf"]]
   ]
+
+testRoots =
+  [ testCase "Empty graph" $ FG.getRoots HS.empty FG.empty @?= HS.empty
+  , testCase "a -> b -> c, roots of a" $
+    FG.getRoots (HS.singleton "foo") graph1 @?= HS.singleton "foo"
+  , testCase "a -> b -> c, roots of b" $
+    FG.getRoots (HS.singleton "bar") graph1 @?= HS.singleton "bar"
+  , testCase "a -> b -> c, roots of c" $
+    FG.getRoots (HS.singleton "yay") graph1 @?= HS.singleton "yay"
+  , testCase "a -> b -> c, roots of ab" $
+    FG.getRoots (HS.fromList ["foo", "bar"]) graph1 @?= HS.singleton "foo"
+  , testCase "a -> bc -> d, roots of bcd" $
+    FG.getRoots (HS.fromList ["yay", "bar", "asdf"]) graph2 @?=
+    HS.fromList ["yay", "bar"]
+  , testCase "a -> bc -> d, roots of bc" $
+    FG.getRoots (HS.fromList ["yay", "bar"]) graph2 @?=
+    HS.fromList ["yay", "bar"]
+  , testCase "a -> bc -> d, roots of abd" $
+    FG.getRoots (HS.fromList ["foo", "bar", "asdf"]) graph2 @?=
+    HS.fromList ["foo"]
+  , testCase "a -> bc -> d, roots of abc" $
+    FG.getRoots (HS.fromList ["foo", "bar", "yay"]) graph2 @?=
+    HS.fromList ["foo"]
+  ]
+  where
+    graph1 =
+      FG.graphFromMappings
+        [("foo", HS.singleton "bar"), ("bar", HS.singleton "yay")]
+    graph2 =
+      FG.graphFromMappings
+        [ ("foo", HS.fromList ["bar", "yay"])
+        , ("bar", HS.singleton "asdf")
+        , ("yay", HS.singleton "asdf")
+        ]

@@ -96,8 +96,12 @@ addChild :: FilePath -> FilePath -> FileGraph -> FileGraph
 addChild pp cc graph = FileGraph newFiles newP2C newC2P
   where
     newFiles = HS.union (HS.fromList [pp, cc]) (files graph)
-    newP2C = addOrAdjustSingle pp cc $ addBlankEntry cc $ parentToChild graph
-    newC2P = addOrAdjustSingle cc pp $ addBlankEntry pp $ childToParent graph
+    newP2C =
+      addOrAdjustSingle pp cc $
+      addBlankEntry pp $ addBlankEntry cc $ parentToChild graph
+    newC2P =
+      addOrAdjustSingle cc pp $
+      addBlankEntry pp $ addBlankEntry cc $ childToParent graph
 
 -- | Maps multiple children to the same parent in an existing @FileGraph@.
 addChildren :: FilePath -> FilePathSet -> FileGraph -> FileGraph
@@ -256,3 +260,49 @@ sccAddComponent node state =
     stackInd = unJust $ elemIndex node (sccStack state)
     (newStack, change) = splitAt stackInd (sccStack state)
     newComponents = change : sccComponents state
+
+-- | For a given set of nodes, get the "parents" of all of those nodes.
+getRoots :: FilePathSet -> FileGraph -> FilePathSet
+getRoots set graph = evalState stateFunc init
+  where
+    init = RootState graph HM.empty HS.empty
+    stateFunc = do
+      forM_ (HS.toList set) $ \child -> rootPerNode child
+      gets rootParents
+
+data RootState =
+  RootState
+    { rootGraph :: FileGraph
+    , rootVisited :: FileMapping
+    , rootParents :: FilePathSet
+    }
+
+rootPerNode :: FilePath -> State RootState ()
+rootPerNode path = do
+  state <- get
+  let graph = rootGraph state
+  let visited = rootVisited state
+  let parents = rootParents state
+  unless (HM.member path visited) $ do
+    let children = getAllChildrenCache path graph visited
+    let childrenSet = HS.fromList $ HM.keys children
+    let newParents = HS.insert path parents
+    put $ state {rootVisited = children, rootParents = newParents}
+
+getAllChildren :: FilePath -> FileGraph -> FilePathSet
+getAllChildren path graph =
+  HS.fromList $ HM.keys $ getAllChildrenCache path graph HM.empty
+
+getAllChildrenCache :: FilePath -> FileGraph -> FileMapping -> FileMapping
+getAllChildrenCache path graph = execState (getAllChildrenCache' path graph)
+
+getAllChildrenCache' :: FilePath -> FileGraph -> State FileMapping FilePathSet
+getAllChildrenCache' path graph = do
+  cache <- get
+  if HM.member path cache
+    then return $ cache HM.! path
+    else do
+      let kids f = getAllChildrenCache' f graph
+      result <- mapM kids $ HS.toList $ parentToChild graph HM.! path
+      modify $ HM.insert path (HS.unions result)
+      return $ HS.unions result

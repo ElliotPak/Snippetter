@@ -65,7 +65,7 @@ addDependencies sa graph = do
   return $
     case saOutputFile sa of
       Nothing -> FG.addFiles deps graph
-      Just a -> FG.addChild a deps graph
+      Just a -> FG.addChildren a deps graph
 
 -- | Check if the @SiteAction@'s output file is up to date.
 outputUpToDate ::
@@ -93,15 +93,14 @@ shouldUpdateSiteAction graph sa = do
 
 -- | Builds dependency information from all layout files in a directory
 -- (recursively).
-getDepInfoWalking ::
-     MonadReadWorld m => FilePath -> BuilderMap -> DepManResult m DepInfo
-getDepInfoWalking root map = do
-  yamlFiles <- pathWalkEndingIn root ".yaml" `mapResultError` FileDepManError
+getDepInfos ::
+     MonadReadWorld m => [FilePath] -> BuilderMap -> DepManResult m DepInfo
+getDepInfos files map = do
   actionsRaw <-
-    mapM (`loadSiteActions` map) yamlFiles `mapResultError` LayoutDepManError
+    mapM (`loadSiteActions` map) files `mapResultError` LayoutDepManError
   let actions = concat actionsRaw
   graph <- graphFromActions actions
-  return $ DepInfo graph actions (actionMap actions) yamlFiles
+  return $ DepInfo graph actions (actionMap actions) files
 
 -- | Builds dependency information from a layout file.
 getDepInfo ::
@@ -127,7 +126,15 @@ updateLayoutFile layoutFile map = do
   depInfo <- runResult $ getDepInfo layoutFile map
   case depInfo of
     Left l -> notifyFailure $ T.pack (show l)
-    Right r -> mapM_ (updateSiteAction $ graph r) (actions r)
+    Right r -> updateSiteActions r (actions r)
+
+-- | Update all @SiteAction@s resulting from layout files.
+updateLayoutFiles :: MonadWriteWorld m => [FilePath] -> BuilderMap -> m ()
+updateLayoutFiles files map = do
+  depInfo <- runResult $ getDepInfos files map
+  case depInfo of
+    Left l -> notifyFailure $ T.pack (show l)
+    Right r -> updateSiteActions r (actions r)
 
 -- | Evaluate a @SiteAction@ if it's not up to date and its dependencies are.
 updateSiteAction :: MonadWriteWorld m => FG.FileGraph -> SiteAction -> m ()
@@ -147,7 +154,11 @@ data UpdateState =
 updateSiteActions :: MonadWriteWorld m => DepInfo -> [SiteAction] -> m ()
 updateSiteActions dep actions = evalStateT statefulUpdate init
   where
-    init = UpdateState actions dep
+    init =
+      UpdateState (mapMaybe (`HM.lookup` outputToAction dep) actionRoots) dep
+    actionRoots =
+      HS.toList $
+      FG.getRoots (HS.fromList $ mapMaybe saOutputFile actions) (graph dep)
 
 -- | Update the @SiteAction@ at the head of the queue and add the children that
 -- need updating to the end. Repeats itself until nothing remains in the queue.
@@ -156,8 +167,8 @@ statefulUpdate = do
   state <- get
   let queue = usQueue state
   let deps = usDepInfo state
-  let (sa, poppedQueue) = (head queue, tail queue)
   -- pop from queue
+  let (sa, poppedQueue) = (head queue, tail queue)
   put $ UpdateState poppedQueue deps
   -- | update site action
   lift $ updateSiteAction (graph deps) sa
@@ -166,9 +177,9 @@ statefulUpdate = do
   case result of
     Left l -> lift $ notifyFailure $ T.pack (show l)
     Right r -> put $ UpdateState (poppedQueue ++ r) deps
+  -- repeat if queue is not empty
   finalState <- get
   let finalQueue = usQueue finalState
-  -- repeat if queue is not empty
   unless (null finalQueue) statefulUpdate
 
 -- | Get the @SiteAction@s that depend on this one and are able to be updated.

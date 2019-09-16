@@ -21,11 +21,11 @@ tests =
   , testGroup "Building Graphs" testBuildingGraphs
   , testGroup "Checking Children" testCheckChildren
   , testGroup "Checking Parents" testCheckParents
-  , testGroup "Checking SCC" testCheckSCC
+  , testGroup "SCC" testCheckSCC
   ]
 
 testGettingParentsAndChildren = do
-  let graph = FG.graphFromChild "foo" $ HS.fromList ["bar", "baz"]
+  let graph = FG.graphFromMapping "foo" $ HS.fromList ["bar", "baz"]
   FG.parentToChild graph @?=
     HM.fromList
       [ ("foo", HS.fromList ["bar", "baz"])
@@ -45,7 +45,7 @@ testGettingParentsAndChildren = do
 
 testBuildingGraphs =
   [ testCase "Singleton graph" $ do
-      let graph = FG.graphFromChild "foo" $ HS.fromList ["bar", "baz"]
+      let graph = FG.graphFromMapping "foo" $ HS.fromList ["bar", "baz"]
       FG.files graph @?= HS.fromList ["foo", "bar", "baz"]
       FG.notEmptyParentToChild graph @?=
         HM.fromList [("foo", HS.fromList ["bar", "baz"])]
@@ -56,7 +56,7 @@ testBuildingGraphs =
             [ ("foo", HS.fromList ["bar", "baz"])
             , ("yay", HS.fromList ["nay", "bray"])
             ]
-      let graph = FG.graphFromChildren mappings
+      let graph = FG.graphFromMappings mappings
       FG.files graph @?= HS.fromList ["foo", "yay", "bar", "baz", "nay", "bray"]
       FG.notEmptyParentToChild graph @?= HM.fromList mappings
       FG.notEmptyChildToParent graph @?=
@@ -72,7 +72,8 @@ testBuildingGraphs =
             , ("yay", HS.fromList ["nay", "bray"])
             ]
       let newChild = ("one", HS.fromList ["two", "three"])
-      let graph = uncurry FG.addChild newChild $ FG.graphFromChildren mappings
+      let graph =
+            uncurry FG.addChildren newChild $ FG.graphFromMappings mappings
       FG.files graph @?=
         HS.fromList
           ["foo", "yay", "bar", "baz", "nay", "bray", "one", "two", "three"]
@@ -96,7 +97,8 @@ testBuildingGraphs =
             [ ("one", HS.fromList ["two", "three"])
             , ("four", HS.fromList ["five", "six"])
             ]
-      let graph = FG.addChildren newChildren $ FG.graphFromChildren mappings
+      let graph =
+            FG.addMultipleChildren newChildren $ FG.graphFromMappings mappings
       FG.files graph @?=
         HS.fromList
           [ "foo"
@@ -130,7 +132,7 @@ testBuildingGraphs =
             [ ("foo", HS.fromList ["bar", "baz"])
             , ("foo", HS.fromList ["nay", "bray"])
             ]
-      let graph = FG.graphFromChildren mappings
+      let graph = FG.graphFromMappings mappings
       FG.files graph @?= HS.fromList ["foo", "bar", "baz", "nay", "bray"]
       FG.notEmptyParentToChild graph @?=
         HM.singleton "foo" (HS.fromList ["bar", "baz", "nay", "bray"])
@@ -148,7 +150,7 @@ testBuildingGraphs =
             , ("yay", HS.singleton "foo")
             , ("asdf", HS.singleton "hjkl")
             ]
-      let graph = FG.graphFromChildren mappings
+      let graph = FG.graphFromMappings mappings
       FG.files graph @?= HS.fromList ["hjkl", "foo", "bar", "yay", "asdf"]
       FG.notEmptyParentToChild graph @?= HM.fromList mappings
       FG.notEmptyChildToParent graph @?=
@@ -172,7 +174,7 @@ testCheckChildren =
   ]
   where
     graph =
-      FG.graphFromChildren
+      FG.graphFromMappings
         [ ("foo", HS.fromList ["bar", "baz"])
         , ("yay", HS.fromList ["nay", "bray"])
         ]
@@ -188,7 +190,7 @@ testCheckParents =
   ]
   where
     graph =
-      FG.graphFromChildren
+      FG.graphFromMappings
         [ ("foo", HS.fromList ["bar", "baz"])
         , ("yay", HS.fromList ["nay", "bray"])
         ]
@@ -197,17 +199,17 @@ testCheckSCC =
   [ testCase "Empty graph" $ FG.getSCC FG.empty @?= []
   , testCase "Acyclic graph" $
     FG.getSCC
-      (FG.graphFromChildren
+      (FG.graphFromMappings
          [("foo", HS.fromList ["bar"]), ("bar", HS.singleton "yay")]) @?=
     []
   , testCase "Looping graph 1" $
     FG.getSCC
-      (FG.graphFromChildren
+      (FG.graphFromMappings
          [("foo", HS.fromList ["bar"]), ("bar", HS.singleton "foo")]) @?=
     [["foo", "bar"]]
   , testCase "Looping graph 2" $
     FG.getSCC
-      (FG.graphFromChildren
+      (FG.graphFromMappings
          [ ("foo", HS.fromList ["bar", "asdf"])
          , ("bar", HS.singleton "yay")
          , ("yay", HS.singleton "foo")
@@ -215,11 +217,11 @@ testCheckSCC =
          ]) @?=
     [["foo", "bar", "yay"]]
   , testCase "Self loop" $
-    FG.getSCC (FG.graphFromChildren [("foo", HS.fromList ["foo"])]) @?=
+    FG.getSCC (FG.graphFromMappings [("foo", HS.fromList ["foo"])]) @?=
     [["foo"]]
   , testCase "Multiple loops" $
     FG.getSCC
-      (FG.graphFromChildren
+      (FG.graphFromMappings
          [ ("foo", HS.fromList ["bar", "asdf"])
          , ("bar", HS.singleton "yay")
          , ("yay", HS.singleton "foo")

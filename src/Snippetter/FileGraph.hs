@@ -52,12 +52,6 @@ notEmptyChildToParent = HM.filter (not . HS.null) . childToParent
 empty :: FileGraph
 empty = FileGraph HS.empty HM.empty HM.empty
 
--- | Given a parent and a list of children, create a mapping of children to parents.
-invertMapping :: FilePath -> FilePathSet -> FileMapping
-invertMapping parent children = HM.fromList $ map inverse $ HS.toList children
-  where
-    inverse x = (x, HS.singleton parent)
-
 -- | Update the file set if it exists, or insert a new one if it doesn't.
 addOrAdjust :: FilePath -> FilePathSet -> FileMapping -> FileMapping
 addOrAdjust key set map =
@@ -65,22 +59,16 @@ addOrAdjust key set map =
     then HM.adjust (HS.union set) key map
     else HM.insert key set map
 
--- | Update the file set if it exists, or insert a new one if it doesn't. Uses
--- with @'invertMapping'@ in order to add or adjust the @childToParent@
--- mapping.
-addOrAdjustInvert :: FilePath -> FilePathSet -> FileMapping -> FileMapping
-addOrAdjustInvert key set mapping = foldr func mapping inverted
-  where
-    inverted = HM.toList $ invertMapping key set
-    func = uncurry addOrAdjust
+addOrAdjustSingle :: FilePath -> FilePath -> FileMapping -> FileMapping
+addOrAdjustSingle aa bb = addOrAdjust aa (HS.singleton bb)
 
 -- | Creates an singleton FileGraph from one mapping.
-graphFromChild :: FilePath -> FilePathSet -> FileGraph
-graphFromChild path children = addChild path children empty
+graphFromMapping :: FilePath -> FilePathSet -> FileGraph
+graphFromMapping path children = addChildren path children empty
 
 -- | Creates a FileGraph from multiple mappings.
-graphFromChildren :: [(FilePath, FilePathSet)] -> FileGraph
-graphFromChildren mappings = addChildren mappings empty
+graphFromMappings :: [(FilePath, FilePathSet)] -> FileGraph
+graphFromMappings mappings = addMultipleChildren mappings empty
 
 -- | Map the key to an empty set.
 addBlankEntry :: FilePath -> FileMapping -> FileMapping
@@ -99,29 +87,32 @@ addFile newChild graph = FileGraph newFiles newP2C newC2P
     newP2C = addBlankEntry newChild $ parentToChild graph
     newC2P = addBlankEntry newChild $ childToParent graph
 
+-- | Add multiple files to the graph without any parent-child relationship.
 addFiles :: FilePathSet -> FileGraph -> FileGraph
 addFiles mappings graph = foldr addFile graph mappings
 
--- | Adds a mapping to an existing FileGraph. If a mapping for that file
--- already exists, the children will be added to the ones that already exist.
-addChild :: FilePath -> FilePathSet -> FileGraph -> FileGraph
-addChild newParent newChildren graph = FileGraph newFiles newP2C newC2P
+-- | Adds a single parent-child mapping to an existing @FileGraph@.
+addChild :: FilePath -> FilePath -> FileGraph -> FileGraph
+addChild pp cc graph = FileGraph newFiles newP2C newC2P
   where
-    newFiles = HS.unions [HS.singleton newParent, newChildren, files graph]
-    newP2C =
-      addOrAdjust newParent newChildren $
-      addBlankEntries newChildren $ parentToChild graph
-    newC2P =
-      addOrAdjustInvert newParent newChildren $
-      addBlankEntry newParent $ childToParent graph
+    newFiles = HS.union (HS.fromList [pp, cc]) (files graph)
+    newP2C = addOrAdjustSingle pp cc $ addBlankEntry cc $ parentToChild graph
+    newC2P = addOrAdjustSingle cc pp $ addBlankEntry pp $ childToParent graph
+
+-- | Maps multiple children to the same parent in an existing @FileGraph@.
+addChildren :: FilePath -> FilePathSet -> FileGraph -> FileGraph
+addChildren newParent newChildren graph =
+  foldr add graph $ HS.toList newChildren
+  where
+    add = addChild newParent
 
 -- | Adds multiple mappings to an existing FileGraph. If a mapping for that
 -- file already exists, the children will be added to the ones that already
 -- exist.
-addChildren :: [(FilePath, FilePathSet)] -> FileGraph -> FileGraph
-addChildren mappings graph = foldr add graph mappings
+addMultipleChildren :: [(FilePath, FilePathSet)] -> FileGraph -> FileGraph
+addMultipleChildren mappings graph = foldr add graph mappings
   where
-    add (path, children) = addChild path children
+    add (path, children) = addChildren path children
 
 -- | Returns the set of children of the given file.
 getChildren :: FilePath -> FileGraph -> Maybe FilePathSet
@@ -133,12 +124,12 @@ getChildren' :: FilePath -> FileGraph -> FilePathSet
 getChildren' path graph =
   fromMaybe (error "node doesn't exist") (getChildren path graph)
 
--- | Returns the set of parents of the given file.
+-- | Returns the set of direct parents of the given file.
 getParents :: FilePath -> FileGraph -> Maybe FilePathSet
 getParents path graph = HM.lookup path (childToParent graph)
 
--- | Returns the set of parents of the given file (and errors if no mappings
--- for that file exist)
+-- | Returns the set of direct parents of the given file (and will error if no
+-- mappings for that file exist)
 getParents' :: FilePath -> FileGraph -> FilePathSet
 getParents' path graph =
   fromMaybe (error "node doesn't exist") (getParents path graph)

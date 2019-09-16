@@ -28,7 +28,7 @@ instance Show LayoutError where
   show (MiscLayoutError t) =
     "An error occured in the layout processing phase:" <> T.unpack t
 
--- | The result of a function that makes/executes a @SiteAction@ and can read files.
+-- | The result of a function that makes/executes a @SiteAction@.
 type LayoutResult m a = Result LayoutError m a
 
 -- | A map of @T.Text@ to @Builder@s.
@@ -155,6 +155,8 @@ executeSiteAction sa = do
       "Failed to " <>
       tenseC <> " \"" <> name <> "\":\n" <> indentFour (T.pack $ show l)
 
+-- | Execute the given operation on all @SiteAction@s resulting from a layout
+-- file.
 actOnLayoutFile ::
      MonadWriteWorld m => (SiteAction -> m ()) -> FilePath -> BuilderMap -> m ()
 actOnLayoutFile act path map = do

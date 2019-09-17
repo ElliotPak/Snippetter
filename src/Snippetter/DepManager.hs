@@ -181,7 +181,10 @@ data UpdateState =
 
 -- | Execute each @SiteAction@ if it's not up to date and its dependencies are.
 updateSiteActions :: MonadWriteWorld m => DepInfo -> [SiteAction] -> m ()
-updateSiteActions dep actions = evalStateT statefulUpdate init
+updateSiteActions dep actions =
+  if null actionRoots
+    then notifySuccess "No updates needed."
+    else evalStateT statefulUpdate init
   where
     init = UpdateState actionRoots dep
     actionRoots =

@@ -147,13 +147,15 @@ graphFromActions actions = do
 
 -- | Update all @SiteAction@s resulting from a layout file.
 updateLayoutFile :: MonadWriteWorld m => FilePath -> BuilderMap -> m ()
-updateLayoutFile layoutFile map = whenResult (getDepInfo layoutFile map) act
+updateLayoutFile layoutFile map =
+  profileWorldAction $ whenResult (getDepInfo layoutFile map) act
   where
     act r = updateNeededSiteActions r (actions r)
 
 -- | Update all @SiteAction@s resulting from layout files.
 updateLayoutFiles :: MonadWriteWorld m => [FilePath] -> BuilderMap -> m ()
-updateLayoutFiles files map = whenResult (getDepInfos files map) act
+updateLayoutFiles files map =
+  profileWorldAction $ whenResult (getDepInfos files map) act
   where
     act r = updateNeededSiteActions r (actions r)
 
@@ -221,7 +223,7 @@ childrenToUpdate deps sa =
   case saOutputFile sa of
     Nothing -> return []
     Just f ->
-      case FG.getChildren f (graph deps) of
+      case FG.getParents f (graph deps) of
         Nothing -> resultE $ CantFindChildren f
         Just k -> do
           let kids = HS.toList k

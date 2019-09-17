@@ -145,7 +145,7 @@ isUpToDate file graph =
     Nothing -> resultE $ MissingKey file
     Just p -> do
       results <- resultLift $ mapM (isOlder file) (HS.toList p)
-      return $ and results
+      return $ or results
 
 -- | Checks if a set of files in the graph are up to date.
 areUpToDate ::

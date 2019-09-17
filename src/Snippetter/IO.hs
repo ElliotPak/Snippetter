@@ -21,6 +21,7 @@ import System.Console.ANSI
 import System.Directory
 import System.Exit
 import System.FilePath.Posix
+import System.IO
 import System.IO.Error
 import System.Process hiding (runProcess)
 
@@ -178,6 +179,7 @@ notifyUserIO nt text = do
       TIO.putStrLn text
       setSGR
         [SetConsoleIntensity NormalIntensity, SetColor Foreground Vivid White]
+      hFlush stdout
 
 -- | Wrap an IOException in a FileError. Used when reading files.
 rewrapReadError :: FilePath -> IOException -> FileError
@@ -220,17 +222,20 @@ profileResult desc act = do
 
 -- | Execute some action that reads/writes to the world, printing the time it
 -- took to execute.
-profileWorldAction :: MonadWriteWorld m => T.Text -> m a -> m ()
-profileWorldAction desc act = do
+profileWorldAction :: MonadWriteWorld m => m a -> m ()
+profileWorldAction act = do
   beforeTime <- currentTime
   act
   afterTime <- currentTime
   let timeCode = formatTime $ diffUTCTime afterTime beforeTime
-  notifySuccess $ "Done, " <> timeCode
+  notifySuccess $ "Done, " <> timeCode <> " total."
 
 -- | Format a time difference to a human readable format.
 formatTime :: NominalDiffTime -> T.Text
-formatTime time = min <> sec <> milli
+formatTime time =
+  if final == ""
+    then "0ms"
+    else final
   where
     dTime = (realToFrac time :: Double) * 1000
     milliT = (dTime `div'` 1) `mod'` 1000
@@ -243,6 +248,7 @@ formatTime time = min <> sec <> milli
     milli = tf milliT "ms"
     sec = tf secT "s "
     min = tf minT "m "
+    final = min <> sec <> milli
 
 -- | Decodes an Aeson-parsable ADT from the supplied text.
 decodeYaml :: Y.FromJSON a => T.Text -> Either Y.ParseException a

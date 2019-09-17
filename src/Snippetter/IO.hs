@@ -169,14 +169,15 @@ notifyFailure = notifyUser Failure
 notifyUserIO :: NotifyType -> T.Text -> IO ()
 notifyUserIO nt text = do
   let lookup' a l = fromJust $ lookup a l
-  let colour =
-        lookup' nt [(InProgress, Yellow), (Success, Green), (Failure, Red)]
-  let marker =
-        lookup' nt [(InProgress, "..."), (Success, "Ok!"), (Failure, "!!!")]
-  setSGR [SetConsoleIntensity NormalIntensity, SetColor Foreground Vivid colour]
-  putStr $ "[" <> marker <> "] "
-  setSGR [SetConsoleIntensity NormalIntensity, SetColor Foreground Vivid White]
-  TIO.putStrLn text
+  let colour = lookup' nt [(Success, Green), (Failure, Red)]
+  case nt of
+    InProgress -> TIO.putStr text
+    _ -> do
+      setSGR
+        [SetConsoleIntensity NormalIntensity, SetColor Foreground Vivid colour]
+      TIO.putStrLn text
+      setSGR
+        [SetConsoleIntensity NormalIntensity, SetColor Foreground Vivid White]
 
 -- | Wrap an IOException in a FileError. Used when reading files.
 rewrapReadError :: FilePath -> IOException -> FileError

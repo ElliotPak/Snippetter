@@ -67,7 +67,7 @@ addDependencies sa graph = do
   return $
     case saOutputFile sa of
       Nothing -> FG.addFiles deps graph
-      Just a -> FG.addChildren a deps graph
+      Just a -> FG.addParents a deps graph
 
 -- | Check if the @SiteAction@'s output file is up to date.
 outputUpToDate ::
@@ -223,7 +223,7 @@ childrenToUpdate deps sa =
   case saOutputFile sa of
     Nothing -> return []
     Just f ->
-      case FG.getParents f (graph deps) of
+      case FG.getChildren f (graph deps) of
         Nothing -> resultE $ CantFindChildren f
         Just k -> do
           let kids = HS.toList k

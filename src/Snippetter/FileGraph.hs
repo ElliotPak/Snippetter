@@ -110,6 +110,12 @@ addChildren newParent newChildren graph =
   where
     add = addChild newParent
 
+-- | Maps multiple parents to the same child in an existing @FileGraph@.
+addParents :: FilePath -> FilePathSet -> FileGraph -> FileGraph
+addParents newChild newParents graph = foldr add graph $ HS.toList newParents
+  where
+    add = flip addChild newChild
+
 -- | Adds multiple mappings to an existing FileGraph. If a mapping for that
 -- file already exists, the children will be added to the ones that already
 -- exist.
@@ -144,8 +150,10 @@ isUpToDate file graph =
   case getParents file graph of
     Nothing -> resultE $ MissingKey file
     Just p -> do
-      results <- resultLift $ mapM (isOlder file) (HS.toList p)
-      return $ or results
+      results <- resultLift $ mapM (isYounger file) (HS.toList p)
+      if null results
+        then return True
+        else return $ and results
 
 -- | Checks if a set of files in the graph are up to date.
 areUpToDate ::
@@ -154,11 +162,11 @@ areUpToDate targets graph = do
   list <- mapM (`isUpToDate` graph) (HS.toList targets)
   return $ and list
 
--- | Checks if the first file is older than the second. For simplicity's sake,
--- if the first file isn't found, it's not older, and if the second file is
--- found, it is older.
-isOlder :: MonadReadWorld m => FilePath -> FilePath -> m Bool
-isOlder target dep = do
+-- | Checks if the first file is younger than the second. If the first file is
+-- absent, then it's older (to force a rebuild). If the second file is absent,
+-- it's younger (to prevent a rebuild when a dependency does not exist).
+isYounger :: MonadReadWorld m => FilePath -> FilePath -> m Bool
+isYounger target dep = do
   resultT <- runResult $ fileModifyTime target
   case resultT of
     Left _ -> return False

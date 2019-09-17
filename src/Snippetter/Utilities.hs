@@ -16,28 +16,45 @@ import qualified Data.Text as T
 import Prelude hiding (lookup)
 import System.FilePath
 
+-- | A general result type. Right now it's just @ExceptT@ under the hood but
+-- this exists as the transformer stack may eventually change, e.g. by adding
+-- state.
 type Result e m a = ExceptT e m a
 
+-- | Create a @Result@ out of an @Either@.
 result = ExceptT
 
+-- | Executes a @Result@ and puts its value in the main monad.
 runResult = runExceptT
 
+-- | Throw an error in a @Result@.
 resultE :: Monad m => e -> Result e m a
 resultE = throwE
 
+-- | Lift an @Either@ into a @Result@.
 resultLiftEither :: Monad m => Either e a -> Result e m a
 resultLiftEither = liftEither
 
+-- | Lift to the base level of the @Result@.
 resultLift :: Monad m => m a -> Result e m a
 resultLift = lift
 
--- | Maps the error values of a Result type.
+-- | Maps the error values of a @Result@ type.
 --   Right now this type is an alias for ExceptTs.
 mapResultError :: Monad m => Result e m a -> (e -> e') -> Result e' m a
 mapResultError except mapping = result answer
   where
     ran = runResult except
     answer = fmap (mapLeft mapping) ran
+
+-- | Execute the result, and if its result is a success, execute the action
+-- afterward with the result's return value.
+whenResult :: Monad m => Result e m a -> (a -> m ()) -> m ()
+whenResult result act = do
+  either <- runResult result
+  case either of
+    Right r -> act r
+    Left _ -> return ()
 
 -- | Shorthand for a builder's parameters.
 -- Identical to the type of an Aeson object.

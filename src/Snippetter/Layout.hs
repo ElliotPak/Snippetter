@@ -125,35 +125,22 @@ executeSiteAction' (Run process args stdin) =
   packRunProcess process args stdin `mapResultError` LayoutFileError
 
 -- | Get the tense to be used in status messages for each @SiteAction@.
-siteActionTenses :: SiteAction -> (T.Text, T.Text, T.Text)
-siteActionTenses (Build _ _ _) = ("Building", "built", "build")
-siteActionTenses (Copy _ _) = ("Copying", "copied", "copy")
-siteActionTenses (Move _ _) = ("Moving", "moved", "move")
-siteActionTenses (Delete _) = ("Deleting", "deleted", "delete")
-siteActionTenses (Run _ _ _) = ("Running", "ran", "run")
-
--- | Get the subject to be used in status messages for each @SiteAction@.
-siteActionName :: SiteAction -> T.Text
-siteActionName (Build _ _ fp) = T.pack fp
-siteActionName (Delete file) = T.pack file
-siteActionName (Copy from to) = T.pack from <> "\" to \"" <> T.pack to
-siteActionName (Move from to) = T.pack from <> "\" to \"" <> T.pack to
-siteActionName (Run process args _) = process <> " " <> T.intercalate " " args
+siteActionDesc :: SiteAction -> T.Text
+siteActionDesc (Build _ _ fp) = "Building \"" <> T.pack fp <> "\""
+siteActionDesc (Copy from to) =
+  "Copying \"" <> T.pack from <> "\" to \"" <> T.pack to <> "\""
+siteActionDesc (Move from to) =
+  "Moving \"" <> T.pack from <> "\" to \"" <> T.pack to <> "\""
+siteActionDesc (Delete file) = "Deleting \"" <> T.pack file <> "\""
+siteActionDesc (Run process args _) =
+  "Running \"" <> process <> " " <> T.intercalate " " args <> "\""
 
 -- | Execute a @SiteAction@ and notify the user of the results.
 executeSiteAction :: MonadWriteWorld m => SiteAction -> m ()
 executeSiteAction sa = do
-  let name = siteActionName sa
-  let (tenseA, tenseB, tenseC) = siteActionTenses sa
-  notifyProgress $ tenseA <> " \"" <> name <> "\"..."
-  result <- runResult $ executeSiteAction' sa
-  case result of
-    Right r ->
-      notifySuccess $ "Successfully " <> tenseB <> " \"" <> name <> "\"."
-    Left l ->
-      notifyFailure $
-      "Failed to " <>
-      tenseC <> " \"" <> name <> "\":\n" <> indentFour (T.pack $ show l)
+  runResult $
+    profileResult (siteActionDesc sa <> "... ") $ executeSiteAction' sa
+  return ()
 
 -- | Execute the given operation on all @SiteAction@s resulting from a layout
 -- file.

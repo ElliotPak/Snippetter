@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 -- | Contains a bunch of functions related to file IO and interaction with the
 -- outside world, including typeclasses that use it.
 module Snippetter.IO where
@@ -7,6 +9,7 @@ import Control.Exception
 import Control.Monad
 import Control.Monad.Trans
 import qualified Data.ByteString.Char8 as B
+import Data.Fixed
 import Data.List
 import Data.Maybe
 import qualified Data.Text as T
@@ -83,6 +86,7 @@ class Monad m =>
   dirExists :: FilePath -> m Bool
   directoryContents :: FilePath -> FileResult m [FilePath]
   fileModifyTime :: FilePath -> m UTCTime
+  currentTime :: m UTCTime
 
 -- | Represents different types of user notification.
 data NotifyType
@@ -129,6 +133,7 @@ instance MonadReadWorld IO where
   fileModifyTime = getModificationTime
   directoryContents path =
     tryIO (getDirectoryContents path) id (rewrapReadError path)
+  currentTime = getCurrentTime
 
 instance MonadWriteWorld IO where
   writeFile path contents =
@@ -192,6 +197,50 @@ rewrapWriteError defaultPath e
   | otherwise = OtherFileError path e
   where
     path = unJust $ ioeGetFileName e <|> Just defaultPath
+
+-- | Execute a @Result@, printing the time it took to execute, along with
+-- whether it succeeded or failed (and the error if the latter occured).
+profileResult ::
+     (MonadWriteWorld m, Show e) => T.Text -> Result e m a -> Result e m a
+profileResult desc act = do
+  beforeTime <- resultLift currentTime
+  resultLift $ notifyProgress desc
+  result <- resultLift $ runResult act
+  afterTime <- resultLift currentTime
+  let timeCode = formatTime $ diffUTCTime afterTime beforeTime
+  case result of
+    Right r -> resultLift (notifySuccess $ "OK, " <> timeCode) >> return r
+    Left l ->
+      resultLift
+        (notifyFailure $
+         "FAIL (" <> timeCode <> ")\n" <> indentFour (T.pack $ show l)) >>
+      resultE l
+
+-- | Execute some action that reads/writes to the world, printing the time it
+-- took to execute.
+profileWorldAction :: MonadWriteWorld m => T.Text -> m a -> m ()
+profileWorldAction desc act = do
+  beforeTime <- currentTime
+  act
+  afterTime <- currentTime
+  let timeCode = formatTime $ diffUTCTime afterTime beforeTime
+  notifySuccess $ "Done, " <> timeCode
+
+-- | Format a time difference to a human readable format.
+formatTime :: NominalDiffTime -> T.Text
+formatTime time = min <> sec <> milli
+  where
+    dTime = (realToFrac time :: Double) * 1000
+    milliT = (dTime `div'` 1) `mod'` 1000
+    secT = (dTime `div'` 1000) `mod'` 60
+    minT = dTime `div'` 60000
+    tf num suffix =
+      if num > 0
+        then T.pack (show num) <> suffix
+        else ""
+    milli = tf milliT "ms"
+    sec = tf secT "s "
+    min = tf minT "m "
 
 -- | Decodes an Aeson-parsable ADT from the supplied text.
 decodeYaml :: Y.FromJSON a => T.Text -> Either Y.ParseException a

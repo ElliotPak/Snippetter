@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 -- | Contains functions to load and execute layout files based on file
 -- dependencies.
 module Snippetter.DepManager where
@@ -91,24 +93,47 @@ shouldUpdateSiteAction graph sa = do
   d <- depsUpToDate graph sa
   return (not o && d)
 
--- | Builds dependency information from all layout files in a directory
--- (recursively).
-getDepInfos ::
+-- | All @SiteAction@s that need to be updated according to the graph.
+actionsToUpdate ::
+     MonadReadWorld m
+  => FG.FileGraph
+  -> [SiteAction]
+  -> DepManResult m [SiteAction]
+actionsToUpdate graph = filterM (shouldUpdateSiteAction graph)
+
+-- | Builds dependency information from the specified layout files.
+getDepInfosSilent ::
      MonadReadWorld m => [FilePath] -> BuilderMap -> DepManResult m DepInfo
-getDepInfos files map = do
+getDepInfosSilent files map = do
   actionsRaw <-
     mapM (`loadSiteActions` map) files `mapResultError` LayoutDepManError
   let actions = concat actionsRaw
   graph <- graphFromActions actions
   return $ DepInfo graph actions (actionMap actions) files
 
--- | Builds dependency information from a layout file.
+-- | Builds dependency information from the specified layout files, outputting
+-- the results of its steps as it goes.
+getDepInfos ::
+     MonadWriteWorld m => [FilePath] -> BuilderMap -> DepManResult m DepInfo
+getDepInfos files map = do
+  actionsRaw <-
+    profileResult "Loading layout files..." $
+    mapM (`loadSiteActions` map) files `mapResultError` LayoutDepManError
+  let actions = concat actionsRaw
+  graph <-
+    profileResult "Determining dependencies..." $ graphFromActions actions
+  return $ DepInfo graph actions (actionMap actions) files
+
+-- | Builds dependency information from a layout file, outputting the results
+-- of its steps as it goes.
 getDepInfo ::
+     MonadWriteWorld m => FilePath -> BuilderMap -> DepManResult m DepInfo
+getDepInfo layoutFile = getDepInfos [layoutFile]
+
+-- | Builds dependency information from a layout file.
+getDepInfoSilent ::
      MonadReadWorld m => FilePath -> BuilderMap -> DepManResult m DepInfo
-getDepInfo layoutFile map = do
-  actions <- loadSiteActions layoutFile map `mapResultError` LayoutDepManError
-  graph <- graphFromActions actions
-  return $ DepInfo graph actions (actionMap actions) [layoutFile]
+getDepInfoSilent layoutFile = getDepInfosSilent [layoutFile]
 
 -- | Create a @FileGraph@ based on a @[SiteAction]@.
 graphFromActions ::
@@ -122,19 +147,23 @@ graphFromActions actions = do
 
 -- | Update all @SiteAction@s resulting from a layout file.
 updateLayoutFile :: MonadWriteWorld m => FilePath -> BuilderMap -> m ()
-updateLayoutFile layoutFile map = do
-  depInfo <- runResult $ getDepInfo layoutFile map
-  case depInfo of
-    Left l -> notifyFailure $ T.pack (show l)
-    Right r -> updateSiteActions r (actions r)
+updateLayoutFile layoutFile map = whenResult (getDepInfo layoutFile map) act
+  where
+    act r = updateNeededSiteActions r (actions r)
 
 -- | Update all @SiteAction@s resulting from layout files.
 updateLayoutFiles :: MonadWriteWorld m => [FilePath] -> BuilderMap -> m ()
-updateLayoutFiles files map = do
-  depInfo <- runResult $ getDepInfos files map
-  case depInfo of
-    Left l -> notifyFailure $ T.pack (show l)
-    Right r -> updateSiteActions r (actions r)
+updateLayoutFiles files map = whenResult (getDepInfos files map) act
+  where
+    act r = updateNeededSiteActions r (actions r)
+
+-- | Executes @updateSiteActions@ only on files who have not yet updated.
+updateNeededSiteActions :: MonadWriteWorld m => DepInfo -> [SiteAction] -> m ()
+updateNeededSiteActions dep actions =
+  whenResult
+    (profileResult "Determining build order..." $
+     actionsToUpdate (graph dep) actions) $
+  updateSiteActions dep
 
 -- | Evaluate a @SiteAction@ if it's not up to date and its dependencies are.
 updateSiteAction :: MonadWriteWorld m => FG.FileGraph -> SiteAction -> m ()
@@ -154,9 +183,9 @@ data UpdateState =
 updateSiteActions :: MonadWriteWorld m => DepInfo -> [SiteAction] -> m ()
 updateSiteActions dep actions = evalStateT statefulUpdate init
   where
-    init =
-      UpdateState (mapMaybe (`HM.lookup` outputToAction dep) actionRoots) dep
+    init = UpdateState actionRoots dep
     actionRoots =
+      mapMaybe (`HM.lookup` outputToAction dep) $
       HS.toList $
       FG.getRoots (HS.fromList $ mapMaybe saOutputFile actions) (graph dep)
 

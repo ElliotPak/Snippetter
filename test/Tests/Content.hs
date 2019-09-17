@@ -18,9 +18,9 @@ import Test.Tasty.HUnit
 import Tests.Helpers
 import qualified Tests.SubBuilder
 
-files = [("foo", "bar")]
+files = [("foo", ("bar", startTime))]
 
-filesMissing = [("food", "bar")]
+filesMissing = [("food", ("bar", startTime))]
 
 tests =
   [ testGroup "Text" testText

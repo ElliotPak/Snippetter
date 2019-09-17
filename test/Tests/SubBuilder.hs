@@ -18,9 +18,9 @@ import Test.Tasty.HUnit
 import Tests.Helpers
 
 files =
-  [ ("foo", "- title: from-file")
-  , ("bar", "- title: from-file")
-  , ("baz", "- title: from-file")
+  [ ("foo", ("- title: from-file", startTime))
+  , ("bar", ("- title: from-file", startTime))
+  , ("baz", ("- title: from-file", startTime))
   ]
 
 tests =

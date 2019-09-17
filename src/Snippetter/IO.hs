@@ -85,7 +85,7 @@ class Monad m =>
   fileExists :: FilePath -> m Bool
   dirExists :: FilePath -> m Bool
   directoryContents :: FilePath -> FileResult m [FilePath]
-  fileModifyTime :: FilePath -> m UTCTime
+  fileModifyTime :: FilePath -> FileResult m UTCTime
   currentTime :: m UTCTime
 
 -- | Represents different types of user notification.
@@ -130,7 +130,8 @@ instance MonadReadWorld IO where
   getFileContents path = tryIO (TIO.readFile path) id (rewrapReadError path)
   fileExists = doesFileExist
   dirExists = doesDirectoryExist
-  fileModifyTime = getModificationTime
+  fileModifyTime path =
+    tryIO (getModificationTime path) id (rewrapReadError path)
   directoryContents path =
     tryIO (getDirectoryContents path) id (rewrapReadError path)
   currentTime = getCurrentTime

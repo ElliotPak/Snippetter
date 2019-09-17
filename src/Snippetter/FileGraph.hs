@@ -154,16 +154,19 @@ areUpToDate targets graph = do
   list <- mapM (`isUpToDate` graph) (HS.toList targets)
   return $ and list
 
--- | Checks if the first file is older than the second.
+-- | Checks if the first file is older than the second. For simplicity's sake,
+-- if the first file isn't found, it's not older, and if the second file is
+-- found, it is older.
 isOlder :: MonadReadWorld m => FilePath -> FilePath -> m Bool
 isOlder target dep = do
-  targetExists <- fileExists target
-  if not targetExists
-    then return True
-    else do
-      targetDate <- fileModifyTime target
-      depDate <- fileModifyTime dep
-      return $ targetDate > depDate
+  resultT <- runResult $ fileModifyTime target
+  case resultT of
+    Left _ -> return False
+    Right t -> do
+      resultD <- runResult $ fileModifyTime dep
+      case resultD of
+        Left _ -> return True
+        Right d -> return $ t > d
 
 -- | Checks if the node is its own parent.
 isOwnParent :: FilePath -> FileGraph -> Bool

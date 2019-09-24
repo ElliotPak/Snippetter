@@ -2,7 +2,39 @@
 
 -- | Contains a bunch of helper functions. Some are used throughout other parts
 --   of the library, and some are intended to be used when creating Macros.
-module Snippetter.Utilities where
+module Snippetter.Utilities
+  ( -- * Result
+    Result
+  , result
+  , runResult
+  , resultE
+  , resultLiftEither
+  , resultLift
+  , mapResultError
+  , whenResult
+    -- * Params
+  , Params
+  , emptyParams
+  , nullParams
+  , paramUnion
+    -- * Other important stuff
+  , FilePathSet
+    -- * Text/String utilities
+  , indentText
+  , indentStr
+  , indentWithListMarker
+  , indentMultiWithListMarker
+  , indentFour
+  , indentFourStr
+  , (<\>)
+  , (<\\>)
+    -- * Misc utilities
+  , unRight
+  , unJust
+  , mapLeft
+  , maybeToEither
+  , lookupEither
+  ) where
 
 import Control.Monad.Except
 import Control.Monad.Trans.Class
@@ -10,6 +42,7 @@ import Control.Monad.Trans.Except
 import Data.Aeson.Types (Object, Value(Object, String))
 import Data.HashMap.Strict (HashMap, lookup)
 import qualified Data.HashMap.Strict as HM
+import qualified Data.HashSet as HS
 import Data.Hashable
 import Data.List.Split
 import qualified Data.Text as T
@@ -56,6 +89,9 @@ whenResult result act = do
     Right r -> act r
     Left _ -> return ()
 
+-- | Shorthand for @HashSet FilePath@.
+type FilePathSet = HS.HashSet FilePath
+
 -- | Shorthand for a builder's parameters.
 -- Identical to the type of an Aeson object.
 type Params = HM.HashMap T.Text Value
@@ -73,11 +109,12 @@ nullParams = HM.null
 paramUnion :: Params -> Params -> Params
 paramUnion = HM.union
 
--- | Retrieves the value from a @Maybe@ if it's @Just@, and errors otherwise.
+-- | Retrieves the value from a @Either@ if it's @Right@, and errors otherwise.
 unRight :: Either e a -> a
 unRight (Right x) = x
 unRight _ = error "unRight on left value"
 
+-- | Retrieves the value from a @Maybe@ if it's @Just@, and errors otherwise.
 unJust :: Maybe a -> a
 unJust (Just a) = a
 unJust _ = error "unJust on Nothing"
@@ -117,6 +154,8 @@ indentWithListMarker text = indentText 2 (h <> t)
     t = T.unlines $ (map (indentText 2) . tail) lines
     h = "- " <> head lines <> "\n"
 
+-- | Runs @indentWithListMarker@ on multiple @Text@s and intercalates them
+-- together with newlines in between.
 indentMultiWithListMarker :: [T.Text] -> T.Text
 indentMultiWithListMarker markers =
   T.intercalate "\n" (map indentWithListMarker markers)
@@ -136,7 +175,8 @@ addSingleLineText base single
   | T.count "\n" single == 0 = base <> T.stripStart single
   | otherwise = base <> "\n" <> single
 
--- | Infix operator for addSingleLineText.
+-- | Add text on a newline if it's more than one line, or add it to the text
+--   otherwise.
 a <\> b = addSingleLineText a b
 
 -- | Append text with a newline as long as neither text is null
@@ -147,16 +187,5 @@ appendWithNewLine aa bb
   | bb == "" = aa
   | otherwise = aa <> "\n" <> bb
 
--- | Infix operator for appendWithNewLine.
+-- | Append text with a newline as long as neither text is null
 a <\\> b = appendWithNewLine a b
-
--- | Remove duplicates from a list.
---   Taken from https://stackoverflow.com/a/16108856
-removeDuplicates :: Eq a => [a] -> [a]
-removeDuplicates =
-  foldl
-    (\seen x ->
-       if x `elem` seen
-         then seen
-         else seen ++ [x])
-    []

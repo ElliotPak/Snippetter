@@ -2,7 +2,44 @@
 
 -- | Contains functions/types related to builders and building files, including
 -- content, actions, the functions that manipulate those, and more.
-module Snippetter.Build where
+module Snippetter.Build
+  ( -- * Results, Errors, and Important Things
+    DocError (..)
+  , BuilderError(..)
+  , DocResult
+  , BuilderResult
+  , Builder
+  , NamedBuilder(..)
+  , PathedParams(..)
+  , executeBuilder
+  , filesForBuilder
+  -- * Content
+  , Content
+  , conNeededFiles
+  , conShow
+  , conPreview
+  , conEvaluate
+  -- ** Content types
+  , text
+  , snippet
+  , transform
+  , doc
+  , subBuilder
+  , SubBuilderExec
+  , subBuilderExec
+  , emptyContent
+  -- * Actions
+  , Action
+  , actNeededFiles
+  , actShow
+  , actPreview
+  , actExecute
+  -- * Action types
+  , noContentAction
+  , singleContentAction
+  , multiContentAction
+  , noAction
+  ) where
 
 import Control.Monad
 import Data.Aeson.Types (Object, Value(Object, String))
@@ -21,7 +58,6 @@ data DocError
   = DocBuilderError BuilderError NamedBuilder (Maybe FilePath)
   | DocFileError FileError
   | DocYamlError YamlError
-  | MissingBuilder T.Text
   | TransformFailed T.Text
   | MiscDocError T.Text
   deriving (Eq)
@@ -39,11 +75,9 @@ instance Show DocError where
   show (DocFileError e) = show e
   show (TransformFailed t) =
     "Transforming some content failed with the following: " <> T.unpack t
-  show (MissingBuilder t) =
-    "The builder \"" <> T.unpack t <> "\" was missing from the builder map."
   show (MiscDocError t) = "An error occured while building:" <> T.unpack t
 
--- | The result a function that builds a page and can read files.
+-- | The result of a function that builds a page.
 type DocResult m a = Result DocError m a
 
 -- | The result of a @Builder@ function.
@@ -92,9 +126,6 @@ instance Show BuilderError where
   show (WrongKeyType t) = "The key \"" <> T.unpack t <> "\" was the wrong type."
   show (MiscBuilderError t) = "An error occured while building: " <> T.unpack t
 
--- | Shorthand for @HashSet FilePath@.
-type FilePathSet = HS.HashSet FilePath
-
 -- | Retrieves contents of the specific file, and maps possible errors to
 --   @DocFileError@s.
 fileContentsInDoc :: MonadReadWorld m => FilePath -> DocResult m T.Text
@@ -131,7 +162,10 @@ builderWithParams ::
      Monad m => NamedBuilder -> [PathedParams] -> DocResult m Content
 builderWithParams b v = do
   mapped <- mapM (buildDoc b) v
-  return $ ContentList mapped
+  let addFunc a b = a <> b
+  let add c = singleContentAction c addFunc "Add: "
+  let contentList contents = Doc EmptyContent (map add mapped)
+  return $ contentList mapped
 
 -- | Build a @Doc@ by running a @Builder@ with the given parameters.
 buildDoc :: Monad m => NamedBuilder -> PathedParams -> DocResult m Content
@@ -155,11 +189,9 @@ filesForBuilder b pp = buildDoc b pp >>= conNeededFiles
 data Content
   = Text T.Text
   | Snippet FilePath
-  | Transform Content (T.Text -> T.Text)
-  | TransformError Content (T.Text -> Either T.Text T.Text)
-  | SubBuilder SubBuilderExec
+  | Transform Content (T.Text -> Either T.Text T.Text)
   | Doc Content [Action]
-  | ContentList [Content]
+  | SubBuilder SubBuilderExec
   | EmptyContent
 
 instance Show Content where
@@ -170,15 +202,11 @@ conNeededFiles :: MonadReadWorld m => Content -> DocResult m FilePathSet
 conNeededFiles (Text _) = return HS.empty
 conNeededFiles (Snippet s) = return $ HS.singleton s
 conNeededFiles (Transform c _) = conNeededFiles c
-conNeededFiles (TransformError c _) = conNeededFiles c
 conNeededFiles (SubBuilder sme) = smNeededFiles sme
 conNeededFiles (Doc c d) = do
   dNeeded <- actListNeededFiles d
   cNeeded <- conNeededFiles c
   return $ HS.union dNeeded cNeeded
-conNeededFiles (ContentList c) = do
-  cNeeded <- mapM conNeededFiles c
-  return $ HS.unions cNeeded
 conNeededFiles EmptyContent = return HS.empty
 
 -- | Show a piece of @Content@. This is like @show@ except it uses @Text@.
@@ -188,18 +216,12 @@ conShow (Snippet s) = "Snippet named \"" <> T.pack s <> "\""
 conShow (Transform c f) = "Transformation of: " <\> indentFour pre
   where
     pre = conShow c
-conShow (TransformError c f) = "Transformation of: " <\> indentFour pre
-  where
-    pre = conShow c
 conShow (SubBuilder sme) = "Builder executions:" <\\> indentFour (smShow sme)
 conShow (Doc c d) =
   "Doc containing " <\> indentFour (conShow c) <>
   "\n  With the following actions applied to it:\n" <> actions
   where
     actions = T.intercalate "\n" (map (indentWithListMarker . actShow) d)
-conShow (ContentList c) = "The following content:\n" <> contents
-  where
-    contents = T.intercalate "\n" (map (indentWithListMarker . conShow) c)
 conShow EmptyContent = "Empty content"
 
 -- | Preview a piece of @Content@, similar to @conShow@, except files may be read
@@ -213,9 +235,6 @@ conPreview (Snippet s) = do
 conPreview (Transform c f) = do
   dryRun <- conPreview c
   return $ "Transformation of: " <\> indentFour dryRun
-conPreview (TransformError c f) = do
-  dryRun <- conPreview c
-  return $ "Transformation of: " <\> indentFour dryRun
 conPreview (SubBuilder sme) = do
   previewed <- smPreview sme
   return $ "Builder executions:" <\\> indentFour previewed
@@ -227,11 +246,6 @@ conPreview (Doc c d) = do
     indentFour cPreviewed <>
     "\n  With the following actions applied to it:\n" <>
     T.intercalate "\n" (map indentWithListMarker dPreviewed)
-conPreview (ContentList c) = do
-  cPreviewed <- mapM conPreview c
-  return $
-    "The following content:\n" <>
-    T.intercalate "\n" (map indentWithListMarker cPreviewed)
 conPreview EmptyContent = return "Empty content"
 
 -- | Convert a @Content@ to text.
@@ -240,17 +254,11 @@ conEvaluate (Text t) = return t
 conEvaluate (Snippet s) = fileContentsInDoc s
 conEvaluate (Transform c f) = do
   sub <- conEvaluate c
-  return $ f sub
-conEvaluate (TransformError c f) = do
-  sub <- conEvaluate c
   resultLiftEither $ mapLeft TransformFailed $ f sub
 conEvaluate (SubBuilder sme) = smEvaluate sme
 conEvaluate (Doc c d) = do
   initial <- conEvaluate c
   actListExecute d initial
-conEvaluate (ContentList c) = do
-  contents <- mapM conEvaluate c
-  return $ T.concat contents
 conEvaluate EmptyContent = return ""
 
 -- | Determine files needed by a @[Action]@.
@@ -406,77 +414,35 @@ actPreview (MultiContentAction c _ t) = do
     t <> "\n" <> T.intercalate "\n" (map (indentWithListMarker . conShow) c)
 actPreview NoAction = return "No action"
 
--- | Public function for creating a @Text@ (the @Content@) from a @Data.Text@.
+-- | Creates a @Content@ that is literal text.
 text = Text
 
--- | Public function for creating a @Text@ (the @Content@) from a @String@.
-string str = Text $ T.pack str
-
--- | Public function for creating a @Snippet@.
+-- | Creates a @Content@ that evaluates to a file's contents.
 snippet = Snippet
 
--- | Public function for creating a @Transform@.
+-- | Creates a @Content@ that applies a function to another @Content@.
 transform = Transform
 
--- | Public function for creating a @TransformError@.
-transformError = TransformError
-
--- | Public function for creating a @Doc@.
+-- | Creates a @Content@ that applies successive @Action@s to a @Content@.
 doc = Doc
 
--- | Public function for creating a @SubBuilder@.
+-- | Creates a @Content@ that executes other @Builder@s with various parameters.
 subBuilder = SubBuilder
 
--- | Public function for creating a @SubBuilderExec@.
+-- | For use with @subBuilder@.
 subBuilderExec = SubBuilderExec
 
--- | Public function for creating a @ContentList@.
-contentList = ContentList
-
--- | Public function for creating an @EmptyContent@.
+-- | Creates a @Content@ that evaluates to nothing.
 emptyContent = EmptyContent
 
--- | Public function for creating a @NoContentAction@.
+-- | Creates an @Action@ that modifies text based solely on itself.
 noContentAction = NoContentAction
 
--- | Public function for creating a @SingleContentAction@.
+-- | Creates an @Action@ that modifies text based on the output of a @Content@.
 singleContentAction = SingleContentAction
 
--- | Public function for creating a @MultiContentAction@.
+-- | Creates an @Action@ that modifies text based on the output of multiple @Content@s.
 multiContentAction = MultiContentAction
 
--- | Public function for creating a @NoAction@.
+-- | Creates an @Action@ that does nothing.
 noAction = NoAction
-
--- | Shorthand for creating an @Action@ that adds one @Content@ to text.
-add :: Content -> Action
-add c = SingleContentAction c func "Add: "
-  where
-    func a b = a <> b
-
--- | Shorthand for creating an @Action@ that replaces all occurances of some text
---   with the @Content@.
-replace :: T.Text -> Content -> Action
-replace text c =
-  SingleContentAction c func $ "Replace \"" <> text <> "\" with: "
-  where
-    func a b = T.replace text b a
-
--- | Shorthand for creating an @Action@ that adds text.
-addText :: T.Text -> Action
-addText t = add $ text t
-
--- | Shorthand for creating an @Action@ that replaces all occurances of some text
---   with other text.
-replaceText :: T.Text -> T.Text -> Action
-replaceText t1 t2 = replace t1 $ text t2
-
--- | Public function for creating a @SubBuilder@ with just one @SubBuilderExec@.
-singleSubBuilder ::
-     NamedBuilder -> Params -> [PathedParams] -> FilePathSet -> Content
-singleSubBuilder m p pp fp = SubBuilder $ SubBuilderExec m p pp fp
-
--- | Shorthand for creating a @SubBuilder@ that executes the builder on one file.
-subBuilderOnFile :: NamedBuilder -> FilePath -> Content
-subBuilderOnFile m f =
-  subBuilder $ SubBuilderExec m emptyParams [] (HS.singleton f)

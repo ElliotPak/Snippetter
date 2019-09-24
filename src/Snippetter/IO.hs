@@ -2,7 +2,27 @@
 
 -- | Contains a bunch of functions related to file IO and interaction with the
 -- outside world, including typeclasses that use it.
-module Snippetter.IO where
+module Snippetter.IO 
+  ( -- * Results, Errors, and Important Things
+    FileError (..)
+  , YamlError
+  , FileResult
+  , YamlResult
+  , profileResult
+  , profileWorldAction
+  -- * World read/write classes
+  , MonadReadWorld (..)
+  , MonadWriteWorld (..)
+  , NotifyType (..)
+  , notifySuccess
+  , notifyFailure
+  , notifyProgress
+  -- * World read/write functions
+  , yamlIfExists
+  , pathWalk
+  , pathWalkEndingIn
+  , packRunProcess
+  ) where
 
 import Control.Applicative
 import Control.Exception

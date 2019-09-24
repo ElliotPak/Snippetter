@@ -2,7 +2,13 @@
 
 -- | Contains functions to load and execute layout files based on file
 -- dependencies.
-module Snippetter.DepManager where
+module Snippetter.DepManager 
+  ( -- * Results, Errors, and Important Things
+    DepManError
+  , DepManResult
+  , updateLayoutFile
+  , updateLayoutFiles
+  ) where
 
 import Control.Monad
 import Control.Monad.State.Lazy
@@ -10,6 +16,7 @@ import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
 import Data.Maybe
 import qualified Data.Text as T
+import Debug.Trace
 import Snippetter.Build
 import qualified Snippetter.FileGraph as FG
 import Snippetter.IO
@@ -36,6 +43,7 @@ instance Show DepManError where
     "Somehow can't find the children of \"" <>
     f <> "\". Maybe the FileGraph didn't build correctly somehow?"
 
+-- | The result of a dependency manager operation.
 type DepManResult m a = Result DepManError m a
 
 -- | Information of site actions and their dependencies.
@@ -204,7 +212,7 @@ statefulUpdate = do
   -- pop from queue
   let (sa, poppedQueue) = (head queue, tail queue)
   put $ UpdateState poppedQueue deps
-  -- | update site action
+  -- update site action
   lift $ updateSiteAction (graph deps) sa
   -- determine which children need updating, and add to queue
   result <- lift $ runResult $ childrenToUpdate deps sa

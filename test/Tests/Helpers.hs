@@ -124,6 +124,8 @@ getMockState state et =
 
 startTime = UTCTime (fromGregorian 2019 1 1) 0
 
+startTimePlus digit = UTCTime (fromGregorian 2019 1 1) (realToFrac digit)
+
 passMockFiles files = passMock (MockIOState (HM.fromList files) [] startTime)
 
 failMockFiles files = failMock (MockIOState (HM.fromList files) [] startTime)

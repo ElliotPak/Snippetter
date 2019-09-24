@@ -1,5 +1,33 @@
 -- | A graph, used for site dependency management.
-module Snippetter.FileGraph where
+module Snippetter.FileGraph
+  ( -- * Basics
+    FileGraph (files, parentToChild, childToParent)
+  , GraphError
+  , GraphResult
+  , SCComponent
+  , FileMapping
+    -- * Graph info accessing
+  , empty
+  , notEmptyParentToChild
+  , notEmptyChildToParent
+  , getChildren
+  , getParents
+  , isUpToDate
+  , areUpToDate
+  , getSCC
+  , showSCC
+  , getRoots
+    -- * Graph creation
+  , graphFromMapping
+  , graphFromMappings
+    -- * Graph modification
+  , addFile
+  , addFiles
+  , addChild
+  , addChildren
+  , addMultipleChildren
+  , addParents
+  ) where
 
 import Control.Monad
 import Control.Monad.State
@@ -8,6 +36,7 @@ import qualified Data.HashSet as HS
 import Data.List
 import Data.Maybe
 import qualified Data.Text as T
+import Debug.Trace
 import Snippetter.Build
 import Snippetter.IO
 import Snippetter.Utilities
@@ -15,6 +44,7 @@ import Snippetter.Utilities
 -- | Shorthand for a mapping from a file to a set of files.
 type FileMapping = HM.HashMap FilePath FilePathSet
 
+-- | Possible errors when executing graph operations.
 data GraphError
   = GraphFileError FileError
   | MissingKey FilePath
@@ -28,10 +58,15 @@ instance Show GraphError where
   show (OtherGraphError t) =
     "An error occured while determining dependencies: " <> T.unpack t
 
+-- | The result of a graph function that can fail.
 type GraphResult m a = Result GraphError m a
 
 -- | A file graph. Contains a list of files and their parent/child
 -- relationships to each other.
+-- 
+-- This isn't enforced by the FileGraph, but file A should be considered a
+-- parent of file B if A is required to create B, which would also make file B
+-- a child of file A. 
 data FileGraph =
   FileGraph
     { files :: FilePathSet
@@ -110,12 +145,6 @@ addChildren newParent newChildren graph =
   where
     add = addChild newParent
 
--- | Maps multiple parents to the same child in an existing @FileGraph@.
-addParents :: FilePath -> FilePathSet -> FileGraph -> FileGraph
-addParents newChild newParents graph = foldr add graph $ HS.toList newParents
-  where
-    add = flip addChild newChild
-
 -- | Adds multiple mappings to an existing FileGraph. If a mapping for that
 -- file already exists, the children will be added to the ones that already
 -- exist.
@@ -123,6 +152,12 @@ addMultipleChildren :: [(FilePath, FilePathSet)] -> FileGraph -> FileGraph
 addMultipleChildren mappings graph = foldr add graph mappings
   where
     add (path, children) = addChildren path children
+
+-- | Maps multiple parents to the same child in an existing @FileGraph@.
+addParents :: FilePath -> FilePathSet -> FileGraph -> FileGraph
+addParents newChild newParents graph = foldr add graph $ HS.toList newParents
+  where
+    add = flip addChild newChild
 
 -- | Returns the set of children of the given file.
 getChildren :: FilePath -> FileGraph -> Maybe FilePathSet
@@ -180,9 +215,10 @@ isYounger target dep = do
 isOwnParent :: FilePath -> FileGraph -> Bool
 isOwnParent node graph = node `HS.member` (parentToChild graph HM.! node)
 
--- | Get a list of strongly connected components in a graph. If there are none,
--- it's acyclic. Does not include single-filepath components unless that
--- filepath has itself as its parent.
+-- | Get a list of strongly connected components in a graph. Single-node SCCs
+-- that don't have themselves as their own parent are excluded. Therefore, if
+-- there are no SCCs, the graph is acyclic, and if there are SCCs, they
+-- represent cycles within the graph.
 getSCC :: FileGraph -> [SCComponent]
 getSCC graph =
   filter (\a -> length a > 1 || (length a == 1 && isOwnParent (head a) graph)) $
@@ -208,8 +244,10 @@ data SCCState =
     }
   deriving (Show, Eq)
 
+-- | Represents the @FilePath@s in a strongly connected component.
 type SCComponent = [FilePath]
 
+-- | Convert a @[SCComponent]@ to a human-readable string representation.
 showSCC :: [SCComponent] -> T.Text
 showSCC scc = indentMultiWithListMarker $ map showSingleSCC scc
 
@@ -272,7 +310,10 @@ sccAddComponent node state =
     (newStack, change) = splitAt stackInd (sccStack state)
     newComponents = change : sccComponents state
 
--- | For a given set of nodes, get the "parents" of all of those nodes.
+-- | For a given set of nodes, filter out nodes from that set that have another
+-- node in that set as an indirect parent. All nodes in the input set will
+-- either be a node in the output set, or the indirect child of a node in the
+-- output set.
 getRoots :: FilePathSet -> FileGraph -> FilePathSet
 getRoots set graph = evalState stateFunc init
   where

@@ -8,6 +8,7 @@ import Control.Monad.Trans.Except
 import qualified Data.HashSet as HS
 import qualified Data.Text as T
 import Snippetter.Build
+import Snippetter.Helpers
 import Test.Tasty
 import Test.Tasty.HUnit
 import Tests.Helpers

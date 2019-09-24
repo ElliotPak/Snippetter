@@ -40,14 +40,14 @@ basicBuilder' params = do
 sameFileBuilder = UnnamedBuilder sameFileBuilder'
 
 sameFileBuilder' :: Builder
-sameFileBuilder' params = return $ Snippet "foo"
+sameFileBuilder' params = return $ snippet "foo"
 
 fileBuilder = UnnamedBuilder fileBuilder'
 
 fileBuilder' :: Builder
 fileBuilder' params = do
   temp <- lookupText "title" params
-  return $ Snippet $ T.unpack temp
+  return $ snippet $ T.unpack temp
 
 fromText str =
   unObject (Y.decodeEither' (B.pack str) :: Either Y.ParseException Y.Value)

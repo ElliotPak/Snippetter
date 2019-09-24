@@ -26,7 +26,6 @@ tests =
   [ testGroup "Text" testText
   , testGroup "Snippet" testSnippet
   , testGroup "Transform" testTransform
-  , testGroup "TransformError" testTransformError
   , testGroup "SubMacro" Tests.SubBuilder.tests
   ]
 
@@ -39,7 +38,7 @@ testText =
 
 testTextFiles = passIO (conNeededFiles $ text $ T.pack "test") HS.empty
 
-testTextShow = conShow (text $ T.pack "test") @?= (T.pack "\"test\"")
+testTextShow = conShow (text $ T.pack "test") @?= T.pack "\"test\""
 
 testTextPreview = passIO (conPreview $ text $ T.pack "test") (T.pack "\"test\"")
 
@@ -52,28 +51,28 @@ testSnippet =
   , testGroup "Resolving" testSnippetEvaluate
   ]
 
-testSnippetFiles = passIO (conNeededFiles $ Snippet "foo") $ HS.fromList ["foo"]
+testSnippetFiles = passIO (conNeededFiles $ snippet "foo") $ HS.fromList ["foo"]
 
-testSnippetShow = conShow (snippet "foo") @?= (T.pack "Snippet named \"foo\"")
+testSnippetShow = conShow (snippet "foo") @?= T.pack "Snippet named \"foo\""
 
 testSnippetPreview =
   [ testCase "File exists" $
-    passMockFiles files (conPreview $ Snippet "foo") $
+    passMockFiles files (conPreview $ snippet "foo") $
     T.pack "Snippet named \"foo\" with the contents:\n    bar"
   , testCase "File doesn't exist" $
     failMockFiles
       filesMissing
-      (conPreview $ Snippet "foo")
+      (conPreview $ snippet "foo")
       (DocFileError $ NotFound "foo")
   ]
 
 testSnippetEvaluate =
   [ testCase "File exists" $
-    passMockFiles files (conEvaluate $ Snippet "foo") (T.pack "bar")
+    passMockFiles files (conEvaluate $ snippet "foo") (T.pack "bar")
   , testCase "File doesn't exist" $
     failMockFiles
       filesMissing
-      (conEvaluate $ Snippet "foo")
+      (conEvaluate $ snippet "foo")
       (DocFileError $ NotFound "foo")
   ]
 
@@ -84,65 +83,19 @@ testTransform =
   , testGroup "Resolving" testTransformEvaluate
   ]
 
-transNoFile =
-  transform (text $ T.pack "test") $ \text -> text <> (T.pack " baz")
-
-transFile = transform (snippet "foo") $ \text -> text <> (T.pack " baz")
-
-testTransformFiles =
-  [ testCase "Child doesn't depend on anything" $
-    passIO (conNeededFiles transNoFile) HS.empty
-  , testCase "Child depends on a file" $
-    passIO (conNeededFiles transFile) $ HS.fromList ["foo"]
-  ]
-
-testTransformShow =
-  conShow transNoFile @?= (T.pack "Transformation of: \"test\"")
-
-testTransformPreview =
-  [ testCase "Dry run is the same as normal preview" $
-    passIO (conPreview transNoFile) (T.pack "Transformation of: \"test\"")
-  , testCase "Child is successfully dry ran" $
-    passMockFiles files (conPreview transFile) $
-    T.pack
-      "Transformation of: \n    Snippet named \"foo\" with the contents:\n        bar"
-  , testCase "Child is unsuccessfully dry ran" $
-    failMockFiles
-      filesMissing
-      (conPreview transFile)
-      (DocFileError $ NotFound "foo")
-  ]
-
-testTransformEvaluate =
-  [ testCase "Child is successfully evaluated" $
-    passIO (conEvaluate transNoFile) (T.pack "test baz")
-  , testCase "Child is unsuccessfully evaluated" $
-    failMockFiles
-      filesMissing
-      (conEvaluate transFile)
-      (DocFileError $ NotFound "foo")
-  ]
-
-testTransformError =
-  [ testGroup "File deps" testTransformErrorFiles
-  , testGroup "Preview" testTransformErrorPreview
-  , testCase "Show" testTransformErrorShow
-  , testGroup "Resolving" testTransformErrorEvaluate
-  ]
-
 transErrNoFile =
-  transformError (text $ T.pack "test") $ \text ->
-    return $ text <> (T.pack " baz")
+  transform (text $ T.pack "test") $ \text ->
+    return $ text <> T.pack " baz"
 
 transErrFile =
-  transformError (Snippet "foo") $ \text -> return $ text <> (T.pack " baz")
+  transform (snippet "foo") $ \text -> return $ text <> T.pack " baz"
 
 transErrNoFileFail =
-  transformError (text $ T.pack "test") $ \text -> Left $ T.pack "idk"
+  transform (text $ T.pack "test") $ \text -> Left $ T.pack "idk"
 
-transErrFileFail = transformError (Snippet "foo") $ \text -> Left $ T.pack "idk"
+transErrFileFail = transform (snippet "foo") $ \text -> Left $ T.pack "idk"
 
-testTransformErrorFiles =
+testTransformFiles =
   [ testCase "Child doesn't depend on anything" $
     passIO (conNeededFiles transErrNoFile) HS.empty
   , testCase "Child depends on a file" $
@@ -153,10 +106,10 @@ testTransformErrorFiles =
     passIO (conNeededFiles transErrFileFail) $ HS.fromList ["foo"]
   ]
 
-testTransformErrorShow =
-  conShow transErrNoFile @?= (T.pack "Transformation of: \"test\"")
+testTransformShow =
+  conShow transErrNoFile @?= T.pack "Transformation of: \"test\""
 
-testTransformErrorPreview =
+testTransformPreview =
   [ testCase "Dry run is the same as normal preview" $
     passIO (conPreview transErrNoFile) (T.pack "Transformation of: \"test\"")
   , testCase "Child is successfully dry ran" $
@@ -170,7 +123,7 @@ testTransformErrorPreview =
       (DocFileError $ NotFound "foo")
   ]
 
-testTransformErrorEvaluate =
+testTransformEvaluate =
   [ testCase "Child successfully evaluated, transform succeeds" $
     passIO (conEvaluate transErrNoFile) (T.pack "test baz")
   , testCase "Child successfully evaluated, transform fails" $

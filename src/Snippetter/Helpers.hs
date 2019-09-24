@@ -1,9 +1,27 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 -- | Contains a bunch of helper functions, intended to be used when creating
 --   Builders.
-module Snippetter.Helpers where
+module Snippetter.Helpers
+  ( -- * Parameter lookup
+    lookupParams
+  , lookupText
+  , lookupTextDefault
+  , lookupObject
+  , lookupObjectDefault
+  -- * Content/Action shorthands
+  , text
+  , add
+  , replace
+  , addText
+  , replaceText
+  , singleSubBuilder
+  , subBuilderOnFile
+  ) where
 
 import Data.Aeson.Types (Object, Value(Object, String))
-import qualified Data.HashMap.Strict as H
+import qualified Data.HashMap.Strict as HM
+import qualified Data.HashSet as HS
 import Data.Hashable
 import Data.List.Split
 import qualified Data.Text as T
@@ -56,3 +74,46 @@ lookupObjectDefault = lookupDefault unObject
 -- | Shorthand for @lookupDefault unText@.
 lookupTextDefault :: T.Text -> T.Text -> Params -> T.Text
 lookupTextDefault = lookupDefault unText
+
+-- | Shorthand for creating a @text@ (the @Content@) from a @String@.
+string str = text $ T.pack str
+
+-- | Shorthand for creating an @Action@ that adds one @Content@ to text.
+add :: Content -> Action
+add c = singleContentAction c func "Add: "
+  where
+    func a b = a <> b
+
+-- | Shorthand for creating an @Action@ that replaces all occurances of some text
+--   with the @Content@.
+replace :: T.Text -> Content -> Action
+replace text c =
+  singleContentAction c func $ "Replace \"" <> text <> "\" with: "
+  where
+    func a b = T.replace text b a
+
+-- | Shorthand for creating a Content that applies a function to another
+-- @Content@, except the function doesn't fail.
+transformSafe :: Content -> (T.Text -> T.Text) -> Content
+transformSafe c f = transform c func
+  where 
+    func t = return $ f t
+
+-- | Shorthand for creating an @Action@ that adds text.
+addText :: T.Text -> Action
+addText t = add $ text t
+
+-- | Shorthand for creating an @Action@ that replaces all occurances of some text
+--   with other text.
+replaceText :: T.Text -> T.Text -> Action
+replaceText t1 t2 = replace t1 $ text t2
+
+-- | Public function for creating a @SubBuilder@ with just one @SubBuilderExec@.
+singleSubBuilder ::
+     NamedBuilder -> Params -> [PathedParams] -> FilePathSet -> Content
+singleSubBuilder m p pp fp = subBuilder $ subBuilderExec m p pp fp
+
+-- | Shorthand for creating a @SubBuilder@ that executes the builder on one file.
+subBuilderOnFile :: NamedBuilder -> FilePath -> Content
+subBuilderOnFile m f =
+  subBuilder $ subBuilderExec m emptyParams [] (HS.singleton f)

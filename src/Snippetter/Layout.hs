@@ -1,7 +1,21 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | Contains functions/types related to loading and executing layout files.
-module Snippetter.Layout where
+module Snippetter.Layout
+  ( -- * Results, Errors, and Important Things
+    LayoutError
+  , LayoutResult
+  , BuilderMap
+  , insertNamedBuilder
+  , insertNamedBuilders
+  -- * Site Actions
+  , SiteAction (..)
+  , executeSiteAction
+  , executeLayoutFile
+  , loadSiteActions
+  , saNeededFiles
+  , saOutputFile
+  ) where
 
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
@@ -18,6 +32,7 @@ data LayoutError
   = LayoutDocError DocError
   | LayoutYamlError YamlError
   | LayoutFileError FileError
+  | MissingBuilder T.Text
   | MiscLayoutError T.Text
   deriving (Eq)
 
@@ -25,6 +40,8 @@ instance Show LayoutError where
   show (LayoutDocError e) = show e
   show (LayoutYamlError e) = show e
   show (LayoutFileError e) = show e
+  show (MissingBuilder t) =
+    "The builder \"" <> T.unpack t <> "\" was missing from the builder map."
   show (MiscLayoutError t) =
     "An error occured in the layout processing phase:" <> T.unpack t
 
@@ -34,12 +51,17 @@ type LayoutResult m a = Result LayoutError m a
 -- | A map of @T.Text@ to @Builder@s.
 type BuilderMap = HM.HashMap T.Text NamedBuilder
 
+-- | Insert a @Builder@ into a @BuilderMap@ as a @NamedBuilder@.
 insertNamedBuilder :: T.Text -> Builder -> BuilderMap -> BuilderMap
 insertNamedBuilder name builder = HM.insert name (NamedBuilder name builder)
 
+-- | Insert @Builder@s into a @BuilderMap@ as @NamedBuilder@s.
 insertNamedBuilders :: [(T.Text, Builder)] -> BuilderMap -> BuilderMap
 insertNamedBuilders bindings bmap =
   foldr (uncurry insertNamedBuilder) bmap bindings
+
+-- | Creates an empty @BuilderMap@.
+emptyNamedBuilder = HM.empty
 
 -- | Site actions as immediately loaded from a YAML file.
 data Layout
@@ -167,7 +189,7 @@ layoutToAction map (PathedLayout layout input) = ll input layout
     ll path (LayoutBuild output builderName contents) = do
       let mp = PathedParams contents input
       let err = MissingBuilder builderName
-      builder <- mapLeft LayoutDocError $ lookupEither err builderName map
+      builder <- lookupEither err builderName map
       return $ Build builder mp output
     ll path (LayoutCopy from to) = return $ Copy from to
     ll path (LayoutMove from to) = return $ Move from to

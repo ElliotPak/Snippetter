@@ -5,8 +5,8 @@ Snippetter is a static website generation library for Haskell.
 Snippetter is a **WORK IN PROGRESS**, and currently doesn't have all of its
 functionality.
 
-To read an **out of date** Snippetter tutorial, see
-[docs/how-to-use.md](docs/how-to-use.md).
+To read an **out of date** Snippetter tutorial, see the source file for
+[src/Snippetter/Tutorial.hs](Snippetter.Tutorial).
 
 ## Installation
 

@@ -10,7 +10,8 @@ module Snippetter.Helpers
   , lookupObject
   , lookupObjectDefault
   -- * Content/Action shorthands
-  , text
+  , string
+  , transformSafe
   , add
   , replace
   , addText

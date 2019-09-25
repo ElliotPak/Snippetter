@@ -115,7 +115,7 @@ actionsToUpdate ::
   -> DepManResult m [SiteAction]
 actionsToUpdate graph = filterM (shouldUpdateSiteAction graph)
 
--- | Builds dependency information from the specified 'SiteAction's'.
+-- | Builds dependency information from the specified 'SiteAction's.
 getDepInfos ::
      MonadReadWorld m => [SiteAction] -> DepManResult m DepInfo
 getDepInfos actions = do
@@ -200,7 +200,7 @@ showLayoutOutputNeeded = actOnLayoutFiles showActionsOutput
 
 -- | Execute the given operation on all @SiteAction@s resulting from a layout
 -- file. This differs from the "Snippetter.Layout" equivalent in that it only
--- does the action on the 'SiteAction's' that would be updated.
+-- does the action on the 'SiteAction's that would be updated.
 actOnLayoutFiles ::
      MonadWriteWorld m => ([SiteAction] -> m ()) -> BuilderMap -> [FilePath] -> m ()
 actOnLayoutFiles act map path = do
@@ -211,13 +211,13 @@ actOnLayoutFiles act map path = do
       notifyFailure $
       "Failed to load site actions:\n" <> indentFour (T.pack $ show l)
 
--- | Execute the given action on the specified 'SiteAction's' and all of their
+-- | Execute the given action on the specified 'SiteAction's and all of their
 -- children when they're not up to date.
 actOnAllChildren ::
      MonadWriteWorld m => ([SiteAction] -> m ()) -> [SiteAction] -> m ()
 actOnAllChildren act actions = whenResult (getAllChildren actions) act
 
--- | Get the @SiteAction@s that eventually depend on the given 'SiteAction's'
+-- | Get the @SiteAction@s that eventually depend on the given 'SiteAction's
 -- that aren't up to date.
 getAllChildren ::
      MonadWriteWorld m => [SiteAction] -> DepManResult m [SiteAction]

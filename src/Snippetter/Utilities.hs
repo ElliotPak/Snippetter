@@ -158,7 +158,7 @@ indentWithListMarker text = indentText 2 (h <> t)
 -- together with newlines in between.
 indentMultiWithListMarker :: [T.Text] -> T.Text
 indentMultiWithListMarker markers =
-  T.intercalate "\n" (map indentWithListMarker markers)
+  T.intercalate "\n" (map indentWithListMarker markers) <> "\n"
 
 -- | Indent a Text by 4 spaces.
 indentFour :: T.Text -> T.Text

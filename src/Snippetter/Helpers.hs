@@ -111,9 +111,9 @@ replaceText t1 t2 = replace t1 $ text t2
 -- | Public function for creating a @SubBuilder@ with just one @SubBuilderExec@.
 singleSubBuilder ::
      NamedBuilder -> Params -> [PathedParams] -> FilePathSet -> Content
-singleSubBuilder m p pp fp = subBuilder $ subBuilderExec m p pp fp
+singleSubBuilder m p pp fp = subBuilder $ SubBuilderExec m p pp fp
 
 -- | Shorthand for creating a @SubBuilder@ that executes the builder on one file.
 subBuilderOnFile :: NamedBuilder -> FilePath -> Content
 subBuilderOnFile m f =
-  subBuilder $ subBuilderExec m emptyParams [] (HS.singleton f)
+  subBuilder $ SubBuilderExec m emptyParams [] (HS.singleton f)

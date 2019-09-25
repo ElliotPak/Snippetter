@@ -6,23 +6,37 @@ module Snippetter.Layout
     LayoutError
   , LayoutResult
   , BuilderMap
+  , emptyBuilderMap
   , insertNamedBuilder
   , insertNamedBuilders
   -- * Site Actions
   , SiteAction (..)
-  , executeSiteAction
-  , executeLayoutFile
-  , loadSiteActions
+  , loadLayoutFile
+  , loadLayoutFiles
   , saNeededFiles
   , saOutputFile
+  , showActions
+  , previewActions
+  , showActionsDeps
+  , showActionsOutput
+  , executeActions
+  -- * Layout files
+  , showLayout
+  , previewLayout
+  , showLayoutDeps
+  , showLayoutOutput
+  , executeLayout
   ) where
 
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
 import qualified Data.Text as T
 import Data.Yaml ((.:))
+import Data.List
+import Data.Maybe
 import qualified Data.Yaml as Y
 import Prelude hiding (writeFile)
+import Control.Monad
 import Snippetter.Build
 import Snippetter.IO
 import Snippetter.Utilities
@@ -61,7 +75,8 @@ insertNamedBuilders bindings bmap =
   foldr (uncurry insertNamedBuilder) bmap bindings
 
 -- | Creates an empty @BuilderMap@.
-emptyNamedBuilder = HM.empty
+emptyBuilderMap :: BuilderMap
+emptyBuilderMap = HM.empty
 
 -- | Site actions as immediately loaded from a YAML file.
 data Layout
@@ -127,8 +142,8 @@ yamlAsLayout path =
       errorMapping
 
 -- | Loads a list of pathed layouts from a file.
-loadLayoutFile :: MonadReadWorld m => FilePath -> LayoutResult m [PathedLayout]
-loadLayoutFile path = do
+loadLayoutFileRaw :: MonadReadWorld m => FilePath -> LayoutResult m [PathedLayout]
+loadLayoutFileRaw path = do
   y <- yamlAsLayout path
   return $ map (addPath path) y
 
@@ -157,29 +172,91 @@ siteActionDesc (Delete file) = "Deleting \"" <> T.pack file <> "\""
 siteActionDesc (Run process args _) =
   "Running \"" <> process <> " " <> T.intercalate " " args <> "\""
 
+-- | Show the user the dependencies of these 'SiteAction's.
+showActionsDeps :: MonadWriteWorld m => [SiteAction] -> m ()
+showActionsDeps actions = do
+  result <- runResult $ mapM saNeededFiles actions
+  case result of
+    Right r -> do
+        let deps = foldr HS.union HS.empty r
+        notifyInfo $ "Dependencies: " <>
+            T.pack (intercalate ", " $ HS.toList deps) <> "\n"
+    Left l -> 
+      notifyFailure $
+      "Failed to display dependencies :\n" <> indentFour (T.pack $ show l)
+
+-- | Show the user the output files of these 'SiteAction's.
+showActionsOutput :: MonadWriteWorld m => [SiteAction] -> m ()
+showActionsOutput actions =
+  notifyInfo $ "Outputs: " <> outputs
+    where
+      outputs = T.intercalate ", " (map T.pack justActions) <> "\n"
+      justActions = mapMaybe saOutputFile actions
+
+-- | Show the user these 'SiteAction's.
+showActions :: MonadWriteWorld m => [SiteAction] -> m ()
+showActions actions = do
+  result <- runResult $ mapM saShow actions
+  case result of
+    Right r ->
+        notifyInfo $ indentMultiWithListMarker r
+    Left l -> 
+      notifyFailure $
+      "Failed to display dependencies :\n" <> indentFour (T.pack $ show l)
+
+-- | Show the user previews of these 'SiteAction's.
+previewActions :: MonadWriteWorld m => [SiteAction] -> m ()
+previewActions actions = do
+  result <- runResult $ mapM saPreview actions
+  case result of
+    Right r ->
+        notifyInfo $ indentMultiWithListMarker r
+    Left l -> 
+      notifyFailure $
+      "Failed to display dependencies :\n" <> indentFour (T.pack $ show l)
+
 -- | Execute a @SiteAction@ and notify the user of the results.
-executeSiteAction :: MonadWriteWorld m => SiteAction -> m ()
-executeSiteAction sa = do
-  runResult $
-    profileResult (siteActionDesc sa <> "... ") $ executeSiteAction' sa
+executeActions :: MonadWriteWorld m => [SiteAction] -> m ()
+executeActions actions = do
+  let perSa sa = profileResult (siteActionDesc sa <> "... ") $ executeSiteAction' sa
+  runResult $ mapM_ perSa actions
   return ()
 
 -- | Execute the given operation on all @SiteAction@s resulting from a layout
 -- file.
-actOnLayoutFile ::
-     MonadWriteWorld m => (SiteAction -> m ()) -> FilePath -> BuilderMap -> m ()
-actOnLayoutFile act path map = do
-  actions <- runResult $ loadSiteActions path map
+actOnLayoutFiles ::
+     MonadWriteWorld m => ([SiteAction] -> m ()) -> BuilderMap -> [FilePath] -> m ()
+actOnLayoutFiles act map path = do
+  actions <- runResult $ loadLayoutFiles map path
   case actions of
-    Right r -> mapM_ act r
+    Right r -> act r
     Left l ->
       notifyFailure $
-      "Failed to load \"" <>
-      T.pack path <> "\":\n" <> indentFour (T.pack $ show l)
+      "Failed to load site actions:\n" <> indentFour (T.pack $ show l)
 
--- | Load a layout file and execute all @SiteAction@s resulting from it.
-executeLayoutFile :: MonadWriteWorld m => FilePath -> BuilderMap -> m ()
-executeLayoutFile = actOnLayoutFile executeSiteAction
+-- | Load a layout file and execute all @SiteAction@s resulting from it,
+-- notifying the user of the results of each.
+executeLayout :: MonadWriteWorld m => BuilderMap -> [FilePath] -> m ()
+executeLayout = actOnLayoutFiles executeActions
+
+-- | Load a layout file and show the user the dependencies of all
+-- @SiteAction@s resulting from it.
+showLayoutDeps :: MonadWriteWorld m => BuilderMap -> [FilePath] -> m ()
+showLayoutDeps = actOnLayoutFiles showActionsDeps
+
+-- | Load a layout file and show the user the output files of all
+-- @SiteAction@s resulting from it.
+showLayoutOutput :: MonadWriteWorld m => BuilderMap -> [FilePath] -> m ()
+showLayoutOutput = actOnLayoutFiles showActionsOutput
+
+-- | Load a layout file and show the user @SiteAction@s resulting from it.
+showLayout :: MonadWriteWorld m => BuilderMap -> [FilePath] -> m ()
+showLayout = actOnLayoutFiles showActions
+
+-- | Load a layout file and show the user previews of @SiteAction@s resulting
+-- from it.
+previewLayout :: MonadWriteWorld m => BuilderMap -> [FilePath] -> m ()
+previewLayout = actOnLayoutFiles previewActions
 
 -- | Converts a @PathedLayout@ to a @SiteAction@, when given a mapping of
 --   strings to builders.
@@ -200,13 +277,19 @@ layoutToAction map (PathedLayout layout input) = ll input layout
         pHead = head split
         pTail = tail split
 
--- | Loads a list of @SiteAction@ from a file, when given a mapping of strings
---   to builders
-loadSiteActions ::
-     MonadReadWorld m => FilePath -> BuilderMap -> LayoutResult m [SiteAction]
-loadSiteActions path map = do
-  layout <- loadLayoutFile path
+-- | Loads a list of @SiteAction@ from a layout file.
+loadLayoutFile ::
+     MonadReadWorld m => BuilderMap -> FilePath -> LayoutResult m [SiteAction]
+loadLayoutFile map path = do
+  layout <- loadLayoutFileRaw path
   resultLiftEither $ mapM (layoutToAction map) layout
+
+-- | Loads a list of @SiteAction@ from multiple layout files.
+loadLayoutFiles ::
+     MonadReadWorld m => BuilderMap -> [FilePath] -> LayoutResult m [SiteAction]
+loadLayoutFiles bmap paths = do
+    actions <- mapM (loadLayoutFile bmap) paths
+    return $ concat actions
 
 -- | Determine files needed to execute a @SiteAction@.
 saNeededFiles :: MonadReadWorld m => SiteAction -> LayoutResult m FilePathSet
@@ -224,3 +307,15 @@ saOutputFile (Copy from to) = Just to
 saOutputFile (Move from to) = Just to
 saOutputFile (Delete file) = Nothing
 saOutputFile (Run process args stdin) = Nothing
+
+saShow :: MonadReadWorld m => SiteAction -> LayoutResult m T.Text
+saShow (Build m pp f) = showBuilder m pp `mapResultError` LayoutDocError
+saShow (Copy from to) = return $ "Copy \"" <> T.pack from <> "\" to \"" <> T.pack to <> "\""
+saShow (Move from to) = return $ "Move \"" <> T.pack from <> "\" to \"" <> T.pack to <> "\""
+saShow (Delete file) = return $ "Delete \"" <> T.pack file <> "\""
+saShow (Run process args stdin) = return $ "Run \"" <> process <> " " <> T.intercalate " " args <> "\""
+
+saPreview :: MonadReadWorld m => SiteAction -> LayoutResult m T.Text
+saPreview (Build m pp f) =
+  previewBuilder m pp `mapResultError` LayoutDocError
+saPreview sa = saShow sa

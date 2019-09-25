@@ -13,6 +13,8 @@ module Snippetter.Build
   , PathedParams(..)
   , executeBuilder
   , filesForBuilder
+  , showBuilder
+  , previewBuilder
   -- * Content
   , Content
   , conNeededFiles
@@ -25,8 +27,7 @@ module Snippetter.Build
   , transform
   , doc
   , subBuilder
-  , SubBuilderExec
-  , subBuilderExec
+  , SubBuilderExec (..)
   , emptyContent
   -- * Actions
   , Action
@@ -185,6 +186,18 @@ filesForBuilder ::
      MonadReadWorld m => NamedBuilder -> PathedParams -> DocResult m FilePathSet
 filesForBuilder b pp = buildDoc b pp >>= conNeededFiles
 
+-- | Show the actions the 'Builder' will take to build the page.
+showBuilder :: 
+     MonadReadWorld m => NamedBuilder -> PathedParams -> DocResult m T.Text
+showBuilder b pp = do
+    doc <- buildDoc b pp
+    return $ conShow doc
+
+-- | Preview the actions the 'Builder' will take to build the page.
+previewBuilder :: 
+     MonadReadWorld m => NamedBuilder -> PathedParams -> DocResult m T.Text
+previewBuilder b pp = buildDoc b pp >>= conPreview
+
 -- | Represents operations that evaluate to text.
 data Content
   = Text T.Text
@@ -275,11 +288,11 @@ actListExecute xs text = foldM (flip actExecute) text xs
 --   on.
 data SubBuilderExec =
   SubBuilderExec
-    { smBuilder :: NamedBuilder
-    , smDefault :: Params
-    , smParams :: [PathedParams]
-    , smFiles :: FilePathSet
-    } -- deriving (Show, Eq)
+    { smBuilder :: NamedBuilder -- ^ The 'Builder' to use.
+    , smDefault :: Params -- ^ Default 'Params'. If a 'Params' doesn't have a key from the defaults, the value from those defaults will be used.
+    , smParams :: [PathedParams] -- ^ The 'Params' to operate on.
+    , smFiles :: FilePathSet -- ^ Parameter files to load and also operate on.
+    }
 
 instance Show SubBuilderExec where
   show s = T.unpack $ smShow s
@@ -429,19 +442,30 @@ doc = Doc
 -- | Creates a @Content@ that executes other @Builder@s with various parameters.
 subBuilder = SubBuilder
 
--- | For use with @subBuilder@.
-subBuilderExec = SubBuilderExec
-
 -- | Creates a @Content@ that evaluates to nothing.
 emptyContent = EmptyContent
 
 -- | Creates an @Action@ that modifies text based solely on itself.
+noContentAction ::
+       (T.Text -> T.Text) -- ^ Function to apply
+    -> T.Text -- ^ Preview text
+    -> Action
 noContentAction = NoContentAction
 
 -- | Creates an @Action@ that modifies text based on the output of a @Content@.
+singleContentAction ::
+       Content -- ^ 'Content' to evaluate
+    -> (T.Text -> T.Text -> T.Text) -- ^ Function to apply (the 'Content' will be the second parameter)
+    -> T.Text -- ^ Preview text
+    -> Action
 singleContentAction = SingleContentAction
 
 -- | Creates an @Action@ that modifies text based on the output of multiple @Content@s.
+multiContentAction ::
+       [Content] -- ^ 'Content's to evaluate
+    -> (T.Text -> [T.Text] -> T.Text) -- ^ Function to apply
+    -> T.Text -- ^ Preview text
+    -> Action
 multiContentAction = MultiContentAction
 
 -- | Creates an @Action@ that does nothing.

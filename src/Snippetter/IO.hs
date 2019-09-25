@@ -17,6 +17,7 @@ module Snippetter.IO
   , notifySuccess
   , notifyFailure
   , notifyProgress
+  , notifyInfo
   -- * World read/write functions
   , yamlIfExists
   , pathWalk
@@ -114,6 +115,7 @@ data NotifyType
   = InProgress
   | Success
   | Failure
+  | Info
   deriving (Show, Eq)
 
 -- | The @MonadWriteWorld@ class is used to represent monads that interact with the
@@ -186,6 +188,10 @@ notifySuccess = notifyUser Success
 notifyFailure :: MonadWriteWorld m => T.Text -> m ()
 notifyFailure = notifyUser Failure
 
+-- | Shorthand for @notifyUser Failure@.
+notifyInfo :: MonadWriteWorld m => T.Text -> m ()
+notifyInfo = notifyUser Info
+
 -- | Notifies the user by printing to the console.
 notifyUserIO :: NotifyType -> T.Text -> IO ()
 notifyUserIO nt text = do
@@ -193,6 +199,7 @@ notifyUserIO nt text = do
   let colour = lookup' nt [(Success, Green), (Failure, Red)]
   case nt of
     InProgress -> TIO.putStr text
+    Info -> TIO.putStr text
     _ -> do
       setSGR
         [SetConsoleIntensity NormalIntensity, SetColor Foreground Vivid colour]

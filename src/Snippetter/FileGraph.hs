@@ -11,6 +11,8 @@ module Snippetter.FileGraph
   , notEmptyParentToChild
   , notEmptyChildToParent
   , getChildren
+  , getAllChildren
+  , getAllChildren'
   , getParents
   , isUpToDate
   , areUpToDate
@@ -341,9 +343,19 @@ rootPerNode path = do
     let newParents = HS.insert path parents
     put $ state {rootVisited = children, rootParents = newParents}
 
+-- | Get all children of the provided node.
 getAllChildren :: FilePath -> FileGraph -> FilePathSet
-getAllChildren path graph =
-  HS.fromList $ HM.keys $ getAllChildrenCache path graph HM.empty
+getAllChildren path = getAllChildren' (HS.singleton path)
+  -- HS.fromList $ HM.keys $ getAllChildrenCache path graph HM.empty
+
+-- | Get all children of all provided nodes.
+getAllChildren' :: FilePathSet -> FileGraph -> FilePathSet
+getAllChildren' set graph = evalState stateFunc init
+  where
+    init = RootState graph HM.empty HS.empty
+    stateFunc = do
+      forM_ (HS.toList set) $ \child -> rootPerNode child
+      gets (HS.fromList . HM.keys . rootVisited)
 
 getAllChildrenCache :: FilePath -> FileGraph -> FileMapping -> FileMapping
 getAllChildrenCache path graph = execState (getAllChildrenCache' path graph)

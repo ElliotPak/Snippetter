@@ -6,7 +6,7 @@ Snippetter is a **WORK IN PROGRESS**, and currently doesn't have all of its
 functionality.
 
 To read an **out of date** Snippetter tutorial, see the source file for
-[src/Snippetter/Tutorial.hs](Snippetter.Tutorial).
+[Snippetter.Tutorial](src/Snippetter/Tutorial.hs).
 
 ## Installation
 

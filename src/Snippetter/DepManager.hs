@@ -57,51 +57,51 @@ type DepManResult m a = Result DepManError m a
 data DepInfo =
   DepInfo
     { graph :: FG.FileGraph
-    , actions :: [SiteAction]
-    , outputToAction :: HM.HashMap FilePath SiteAction
+    , actions :: [PathedSiteAction]
+    , outputToAction :: HM.HashMap FilePath PathedSiteAction
     }
 
 -- | Map output files to their siteactions.
-actionMap :: [SiteAction] -> HM.HashMap FilePath SiteAction
+actionMap :: [PathedSiteAction] -> HM.HashMap FilePath PathedSiteAction
 actionMap = foldr foo HM.empty
   where
     foo a b =
-      case saOutputFile a of
+      case psaOutputFile a of
         Nothing -> b
         Just c -> HM.insert c a b
 
 -- | Add entries to a @FileGraph@ based on a @SiteAction@ and its dependencies.
 addDependencies ::
      MonadReadWorld m
-  => SiteAction
+  => PathedSiteAction
   -> FG.FileGraph
   -> DepManResult m FG.FileGraph
 addDependencies sa graph = do
-  deps <- saNeededFiles sa `mapResultError` LayoutDepManError
+  deps <- psaNeededFiles sa `mapResultError` LayoutDepManError
   return $
-    case saOutputFile sa of
+    case psaOutputFile sa of
       Nothing -> FG.addFiles deps graph
       Just a -> FG.addParents a deps graph
 
 -- | Check if the @SiteAction@'s output file is up to date.
 outputUpToDate ::
-     MonadReadWorld m => FG.FileGraph -> SiteAction -> DepManResult m Bool
+     MonadReadWorld m => FG.FileGraph -> PathedSiteAction -> DepManResult m Bool
 outputUpToDate graph sa =
-  case saOutputFile sa of
+  case psaOutputFile sa of
     Just a -> FG.isUpToDate a graph `mapResultError` GraphDepManError
     Nothing -> return True
 
 -- | Check if the @SiteAction@'s dependencies are up to date.
 depsUpToDate ::
-     MonadReadWorld m => FG.FileGraph -> SiteAction -> DepManResult m Bool
+     MonadReadWorld m => FG.FileGraph -> PathedSiteAction -> DepManResult m Bool
 depsUpToDate graph sa = do
-  deps <- saNeededFiles sa `mapResultError` LayoutDepManError
+  deps <- psaNeededFiles sa `mapResultError` LayoutDepManError
   FG.areUpToDate deps graph `mapResultError` GraphDepManError
 
 -- | Check if a @SiteAction@ should be updated. This is the case when its
 -- output file is not up to date but its dependencies are.
 shouldUpdateSiteAction ::
-     MonadReadWorld m => FG.FileGraph -> SiteAction -> DepManResult m Bool
+     MonadReadWorld m => FG.FileGraph -> PathedSiteAction -> DepManResult m Bool
 shouldUpdateSiteAction graph sa = do
   o <- outputUpToDate graph sa
   d <- depsUpToDate graph sa
@@ -111,22 +111,23 @@ shouldUpdateSiteAction graph sa = do
 actionsToUpdate ::
      MonadReadWorld m
   => FG.FileGraph
-  -> [SiteAction]
-  -> DepManResult m [SiteAction]
+  -> [PathedSiteAction]
+  -> DepManResult m [PathedSiteAction]
 actionsToUpdate graph = filterM (shouldUpdateSiteAction graph)
 
 -- | Builds dependency information from the specified 'SiteAction's.
 getDepInfos ::
-     MonadReadWorld m => [SiteAction] -> DepManResult m DepInfo
+     MonadReadWorld m => [PathedSiteAction] -> DepManResult m DepInfo
 getDepInfos actions = do
   graph <- graphFromActions actions
   return $ DepInfo graph actions (actionMap actions)
 
 -- | Create a @FileGraph@ based on a @[SiteAction]@.
 graphFromActions ::
-     MonadReadWorld m => [SiteAction] -> DepManResult m FG.FileGraph
-graphFromActions actions = do
-  graph <- foldM (flip addDependencies) FG.empty actions
+     MonadReadWorld m => [PathedSiteAction] -> DepManResult m FG.FileGraph
+graphFromActions pathedActions = do
+  let actions = map extractAction pathedActions
+  graph <- foldM (flip addDependencies) FG.empty pathedActions
   let cycles = FG.getSCC graph
   if not (null cycles)
     then resultE $ CyclicFileGraph cycles
@@ -147,7 +148,7 @@ updateLayout map files =
 
 -- | Execute the @SiteAction@s if their outputs aren't up to date but their
 -- dependencies are.
-updateActions :: MonadWriteWorld m => [SiteAction] -> m ()
+updateActions :: MonadWriteWorld m => [PathedSiteAction] -> m ()
 updateActions actions =
   whenResult
     (profileResult "Determining dependencies..." $
@@ -156,22 +157,22 @@ updateActions actions =
 
 -- | Show the user the 'SiteAction's that aren't up to date but whose
 -- dependencies are.
-showActionsNeeded :: MonadWriteWorld m => [SiteAction] -> m ()
+showActionsNeeded :: MonadWriteWorld m => [PathedSiteAction] -> m ()
 showActionsNeeded = actOnAllChildren showActions
 
 -- | Preview the user the 'SiteAction's that aren't up to date but whose
 -- dependencies are.
-previewActionsNeeded :: MonadWriteWorld m => [SiteAction] -> m ()
+previewActionsNeeded :: MonadWriteWorld m => [PathedSiteAction] -> m ()
 previewActionsNeeded = actOnAllChildren previewActions
 
 -- | Show the user the dependencies of the 'SiteAction's that aren't up to date
 -- but whose dependencies are.
-showActionsDepsNeeded :: MonadWriteWorld m => [SiteAction] -> m ()
+showActionsDepsNeeded :: MonadWriteWorld m => [PathedSiteAction] -> m ()
 showActionsDepsNeeded = actOnAllChildren showActionsDeps
 
 -- | Show the user the output files of the 'SiteAction's that aren't up to date
 -- but whose dependencies are.
-showActionsOutputNeeded :: MonadWriteWorld m => [SiteAction] -> m ()
+showActionsOutputNeeded :: MonadWriteWorld m => [PathedSiteAction] -> m ()
 showActionsOutputNeeded = actOnAllChildren showActionsOutput
 
 -- | Show the user the 'SiteAction's resulting from the layout file that aren't
@@ -202,7 +203,7 @@ showLayoutOutputNeeded = actOnLayoutFiles showActionsOutput
 -- file. This differs from the "Snippetter.Layout" equivalent in that it only
 -- does the action on the 'SiteAction's that would be updated.
 actOnLayoutFiles ::
-     MonadWriteWorld m => ([SiteAction] -> m ()) -> BuilderMap -> [FilePath] -> m ()
+     MonadWriteWorld m => ([PathedSiteAction] -> m ()) -> BuilderMap -> [FilePath] -> m ()
 actOnLayoutFiles act map path = do
   actions <- runResult $ loadLayoutFiles map path `mapResultError` LayoutDepManError
   case actions of
@@ -214,13 +215,13 @@ actOnLayoutFiles act map path = do
 -- | Execute the given action on the specified 'SiteAction's and all of their
 -- children when they're not up to date.
 actOnAllChildren ::
-     MonadWriteWorld m => ([SiteAction] -> m ()) -> [SiteAction] -> m ()
+     MonadWriteWorld m => ([PathedSiteAction] -> m ()) -> [PathedSiteAction] -> m ()
 actOnAllChildren act actions = whenResult (getAllChildren actions) act
 
 -- | Get the @SiteAction@s that eventually depend on the given 'SiteAction's
 -- that aren't up to date.
 getAllChildren ::
-     MonadWriteWorld m => [SiteAction] -> DepManResult m [SiteAction]
+     MonadWriteWorld m => [PathedSiteAction] -> DepManResult m [PathedSiteAction]
 getAllChildren actions = do
   depInfo <- profileResult "Determining dependencies..." $
       getDepInfos actions
@@ -229,15 +230,15 @@ getAllChildren actions = do
   return $ childrenOfSiteActions depInfo roots
 
 -- | Get the @SiteAction@s that eventually depend on these ones.
-childrenOfSiteActions :: DepInfo -> [SiteAction] -> [SiteAction]
+childrenOfSiteActions :: DepInfo -> [PathedSiteAction] -> [PathedSiteAction]
 childrenOfSiteActions deps actions = mapMaybe lookup $ HS.toList children
   where
-    outputs = mapMaybe saOutputFile actions
+    outputs = mapMaybe psaOutputFile actions
     children = FG.getAllChildren' (HS.fromList outputs) (graph deps)
     lookup foo = HM.lookup foo (outputToAction deps)
 
 -- | Determines which files are roots and starts updating them.
-determineRoots :: MonadWriteWorld m => [SiteAction] -> DepInfo -> m ()
+determineRoots :: MonadWriteWorld m => [PathedSiteAction] -> DepInfo -> m ()
 determineRoots actions dep =
   whenResult
     (profileResult "Determining build order..." $
@@ -246,12 +247,12 @@ determineRoots actions dep =
 
 data UpdateState =
   UpdateState
-    { usQueue :: [SiteAction]
+    { usQueue :: [PathedSiteAction]
     , usDepInfo :: DepInfo
     }
 
 -- | Execute each @SiteAction@ if it's not up to date and its dependencies are.
-startSiteActionsUpdate :: MonadWriteWorld m => DepInfo -> [SiteAction] -> m ()
+startSiteActionsUpdate :: MonadWriteWorld m => DepInfo -> [PathedSiteAction] -> m ()
 startSiteActionsUpdate dep actions =
   if null actionRoots
     then notifySuccess "No updates needed."
@@ -261,7 +262,7 @@ startSiteActionsUpdate dep actions =
     actionRoots =
       mapMaybe (`HM.lookup` outputToAction dep) $
       HS.toList $
-      FG.getRoots (HS.fromList $ mapMaybe saOutputFile actions) (graph dep)
+      FG.getRoots (HS.fromList $ mapMaybe psaOutputFile actions) (graph dep)
 
 -- | Update the @SiteAction@ at the head of the queue and add the children that
 -- need updating to the end. Repeats itself until nothing remains in the queue.
@@ -286,7 +287,7 @@ statefulUpdate = do
   unless (null finalQueue) statefulUpdate
 
 -- | Evaluate a @SiteAction@ if it's not up to date and its dependencies are.
-updateIfReady :: MonadWriteWorld m => FG.FileGraph -> SiteAction -> m ()
+updateIfReady :: MonadWriteWorld m => FG.FileGraph -> PathedSiteAction -> m ()
 updateIfReady graph sa = do
   shouldUpdate <- runResult $ shouldUpdateSiteAction graph sa
   case shouldUpdate of
@@ -295,9 +296,9 @@ updateIfReady graph sa = do
 
 -- | Get the @SiteAction@s that depend on this one and are able to be updated.
 childrenToUpdate ::
-     MonadReadWorld m => DepInfo -> SiteAction -> DepManResult m [SiteAction]
+     MonadReadWorld m => DepInfo -> PathedSiteAction -> DepManResult m [PathedSiteAction]
 childrenToUpdate deps sa =
-  case saOutputFile sa of
+  case psaOutputFile sa of
     Nothing -> return []
     Just f ->
       case FG.getChildren f (graph deps) of

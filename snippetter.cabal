@@ -1,14 +1,29 @@
 name:                snippetter
+synopsis:            Text file templating library
+description:         Snippetter is a Haskell library that generates text files
+                     through templating. It's intended use is static website
+                     generation, but nothing Snippetter does is
+                     webpage-specific, meaning you can use it to generate any
+                     kind of text file. It also can execute other processes on
+                     your system if you so choose.
+                     .
+                     To see how to use Snippetter, see "Snippetter.Tutorial".
 version:             0.1.0.0
 homepage:            https://github.com/ElliotPak/snippetter
-license:             BSD3
+bug-reports:         https://github.com/ElliotPak/snippetter/issues
+stability:           alpha
+license:             Apache
 license-file:        LICENSE
-author:              Elliot Pak
-maintainer:          elliot@elliotpak.com
-category:            Web
+author:              Elliot Pak <elliot@elliotpak.com>
+maintainer:          Elliot Pak <elliot@elliotpak.com>
+category:            Text
 build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
+
+source-repository head
+  type:          git
+  location:      git://github.com/elliotpak/Snippetter.git
 
 library
   exposed-modules:     Snippetter.Helpers,

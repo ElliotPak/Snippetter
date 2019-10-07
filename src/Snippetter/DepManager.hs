@@ -70,37 +70,15 @@ actionMap = foldr foo HM.empty
         Nothing -> b
         Just c -> HM.insert c a b
 
--- | Check if the @SiteAction@'s output file is up to date.
-outputUpToDate ::
-     MonadReadWorld m => FG.FileGraph -> PathedSiteAction -> DepManResult m Bool
-outputUpToDate graph sa =
-  case psaOutputFile sa of
-    Just a -> FG.isUpToDate a graph `mapResultError` GraphDepManError
-    Nothing -> return True
-
--- | Check if the @SiteAction@'s dependencies are up to date.
-depsUpToDate ::
-     MonadReadWorld m => FG.FileGraph -> PathedSiteAction -> DepManResult m Bool
-depsUpToDate graph sa = do
-  deps <- psaNeededFiles sa `mapResultError` LayoutDepManError
-  FG.areUpToDate deps graph `mapResultError` GraphDepManError
-
--- | Check if a @SiteAction@ should be updated. This is the case when its
--- output file is not up to date but its dependencies are.
-shouldUpdateSiteAction ::
-     MonadReadWorld m => FG.FileGraph -> PathedSiteAction -> DepManResult m Bool
-shouldUpdateSiteAction graph sa = do
-  o <- outputUpToDate graph sa
-  d <- depsUpToDate graph sa
-  return (not o && d)
-
 -- | All @SiteAction@s that need to be updated according to the graph.
 actionsToUpdate ::
      MonadReadWorld m
   => FG.FileGraph
   -> [PathedSiteAction]
   -> DepManResult m [PathedSiteAction]
-actionsToUpdate graph = filterM (shouldUpdateSiteAction graph)
+actionsToUpdate graph actions =
+  filterM (FG.shouldUpdateSiteAction graph) actions
+    `mapResultError` GraphDepManError
 
 -- | Builds dependency information from the specified 'SiteAction's.
 getDepInfos ::
@@ -219,11 +197,8 @@ getAllChildren actions = do
 
 -- | Get the @SiteAction@s that eventually depend on these ones.
 childrenOfSiteActions :: DepInfo -> [PathedSiteAction] -> [PathedSiteAction]
-childrenOfSiteActions deps actions = mapMaybe lookup $ HS.toList children
-  where
-    outputs = mapMaybe psaOutputFile actions
-    children = FG.getAllChildren' (HS.fromList outputs) (graph deps)
-    lookup foo = HM.lookup foo (outputToAction deps)
+childrenOfSiteActions deps actions =
+  FG.getAllChildrenActions (HS.fromList actions) (graph deps)
 
 -- | Determines which files are roots and starts updating them.
 determineRoots :: MonadWriteWorld m => [PathedSiteAction] -> DepInfo -> m ()
@@ -248,9 +223,7 @@ startSiteActionsUpdate dep actions =
   where
     init = UpdateState actionRoots dep
     actionRoots =
-      mapMaybe (`HM.lookup` outputToAction dep) $
-      HS.toList $
-      FG.getRoots (HS.fromList $ mapMaybe psaOutputFile actions) (graph dep)
+      HS.toList $ FG.getRootsOfActions (HS.fromList actions) (graph dep)
 
 -- | Update the @SiteAction@ at the head of the queue and add the children that
 -- need updating to the end. Repeats itself until nothing remains in the queue.
@@ -265,7 +238,7 @@ statefulUpdate = do
   -- update site action
   lift $ updateIfReady (graph deps) sa
   -- determine which children need updating, and add to queue
-  result <- lift $ runResult $ childrenToUpdate deps sa
+  result <- lift $ runResult $ FG.childrenToUpdate sa (graph deps)
   case result of
     Left l -> lift $ notifyFailure $ T.pack (show l)
     Right r -> put $ UpdateState (poppedQueue ++ r) deps
@@ -277,21 +250,8 @@ statefulUpdate = do
 -- | Evaluate a @SiteAction@ if it's not up to date and its dependencies are.
 updateIfReady :: MonadWriteWorld m => FG.FileGraph -> PathedSiteAction -> m ()
 updateIfReady graph sa = do
-  shouldUpdate <- runResult $ shouldUpdateSiteAction graph sa
+  shouldUpdate <- runResult $
+    FG.shouldUpdateSiteAction graph sa `mapResultError` GraphDepManError
   case shouldUpdate of
     Left l -> notifyFailure $ T.pack (show l)
     Right r -> when r (executeActions [sa])
-
--- | Get the @SiteAction@s that depend on this one and are able to be updated.
-childrenToUpdate ::
-     MonadReadWorld m => DepInfo -> PathedSiteAction -> DepManResult m [PathedSiteAction]
-childrenToUpdate deps sa =
-  case psaOutputFile sa of
-    Nothing -> return []
-    Just f ->
-      case FG.getChildren f (graph deps) of
-        Nothing -> resultE $ CantFindChildren f
-        Just k -> do
-          let kids = HS.toList k
-          let lookup foo = HM.lookup foo (outputToAction deps)
-          filterM (shouldUpdateSiteAction $ graph deps) $ mapMaybe lookup kids

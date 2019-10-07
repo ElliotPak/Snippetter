@@ -1,6 +1,8 @@
 {-# LANGUAGE DeriveGeneric #-}
 
--- | A graph, used for site dependency management.
+-- | A graph, used for site dependency management. This is used by other
+-- components: you shouldn't need to create your own 'FileGraph' when building
+-- your own site.
 module Snippetter.FileGraph
   ( -- * Basics
     FileGraph (nodes, parentToChild, childToParent)
@@ -20,6 +22,13 @@ module Snippetter.FileGraph
   , getSCC
   , showSCC
   , getRoots
+    -- * Action-specific accessing
+  , outputsUpToDate
+  , depsUpToDate
+  , shouldUpdateSiteAction
+  , childrenToUpdate
+  , getRootsOfActions
+  , getAllChildrenActions
     -- * Graph creation
   , empty
     -- * Graph modification
@@ -266,12 +275,46 @@ isUpToDate file graph = let node = File file in
         else return $ and results
 
 -- | Checks if a set of files in the graph are up to date.
-areUpToDate ::
-     MonadReadWorld m =>
-         HS.HashSet FilePath -> FileGraph -> GraphResult m Bool
+areUpToDate :: MonadReadWorld m =>
+     FilePathSet -> FileGraph -> GraphResult m Bool
 areUpToDate targets graph = do
   list <- mapM (`isUpToDate` graph) (HS.toList targets)
   return $ and list
+
+-- | Check if the 'PathedSiteAction's output files are up to date.
+outputsUpToDate :: MonadReadWorld m =>
+    PathedSiteAction -> FileGraph -> GraphResult m Bool
+outputsUpToDate sa graph = let node = Action sa in
+  case getFileChildren node graph of
+    Nothing -> resultE $ MissingKey node
+    Just files -> areUpToDate files graph
+
+-- | Check if the 'PathedSiteAction's dependencies are up to date.
+depsUpToDate :: MonadReadWorld m =>
+    PathedSiteAction -> FileGraph -> GraphResult m Bool
+depsUpToDate sa graph = let node = Action sa in
+  case getFileParents node graph of
+    Nothing -> resultE $ MissingKey node
+    Just files -> areUpToDate files graph
+
+-- | Check if a 'SiteAction' should be updated. This is the case when its
+-- output file is not up to date but its dependencies are.
+shouldUpdateSiteAction ::
+     MonadReadWorld m => FileGraph -> PathedSiteAction -> GraphResult m Bool
+shouldUpdateSiteAction graph sa = do
+  o <- outputsUpToDate sa graph
+  d <- depsUpToDate sa graph
+  return (not o && d)
+
+-- | Get all children 'PathedSiteAction's of the given one that need to be
+-- updated.
+childrenToUpdate :: MonadReadWorld m =>
+    PathedSiteAction -> FileGraph -> GraphResult m [PathedSiteAction]
+childrenToUpdate sa graph = let node = Action sa in
+  case getActionChildren node graph of
+    Nothing -> resultE $ MissingKey node
+    Just files ->
+      filterM (shouldUpdateSiteAction graph) $ HS.toList files
 
 -- | Checks if the first file is younger than the second. If the first file is
 -- absent, then it's older (to force a rebuild). If the second file is absent,
@@ -398,6 +441,16 @@ getRoots set graph = evalState stateFunc init
       forM_ (HS.toList set) $ \child -> rootPerNode child
       gets rootParents
 
+-- | For a given set of 'PathedSiteAction's, filter out actions from that set
+-- that have another action in that set as an indirect parent. All nodes in the
+-- input set will either be a node in the output set, or the indirect child of
+-- a node in the output set (and therefore omitted).
+getRootsOfActions :: SiteActionSet -> FileGraph -> SiteActionSet
+getRootsOfActions actions graph = do
+  let as = mapSet Action actions
+  let roots = getRoots as graph
+  mapSetMaybe actionFromNode roots
+
 data RootState =
   RootState
     { rootGraph :: FileGraph
@@ -430,6 +483,14 @@ getAllChildren' set graph = evalState stateFunc init
     stateFunc = do
       forM_ (HS.toList set) $ \child -> rootPerNode child
       gets (HS.fromList . HM.keys . rootVisited)
+
+-- | Get all children 'PathedSiteAction's of all the provided ones.
+getAllChildrenActions ::
+    SiteActionSet -> FileGraph -> [PathedSiteAction]
+getAllChildrenActions actions graph = do
+    let nodes = mapSet Action actions
+    let allChildren = getAllChildren' nodes graph
+    mapMaybe actionFromNode $ HS.toList allChildren
 
 getAllChildrenCache :: Node -> FileGraph -> Mapping -> Mapping
 getAllChildrenCache path graph = execState (getAllChildrenCache' path graph)

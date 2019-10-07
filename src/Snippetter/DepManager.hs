@@ -70,19 +70,6 @@ actionMap = foldr foo HM.empty
         Nothing -> b
         Just c -> HM.insert c a b
 
--- | Add entries to a @FileGraph@ based on a @SiteAction@ and its dependencies.
-addDependencies ::
-     MonadReadWorld m
-  => PathedSiteAction
-  -> FG.FileGraph
-  -> DepManResult m FG.FileGraph
-addDependencies sa graph = do
-  deps <- psaNeededFiles sa `mapResultError` LayoutDepManError
-  return $
-    case psaOutputFile sa of
-      Nothing -> FG.addFiles deps graph
-      Just a -> FG.addParents a deps graph
-
 -- | Check if the @SiteAction@'s output file is up to date.
 outputUpToDate ::
      MonadReadWorld m => FG.FileGraph -> PathedSiteAction -> DepManResult m Bool
@@ -127,7 +114,8 @@ graphFromActions ::
      MonadReadWorld m => [PathedSiteAction] -> DepManResult m FG.FileGraph
 graphFromActions pathedActions = do
   let actions = map extractAction pathedActions
-  graph <- foldM (flip addDependencies) FG.empty pathedActions
+  graph <- foldM (flip FG.addSiteAction) FG.empty pathedActions
+                `mapResultError` GraphDepManError
   let cycles = FG.getSCC graph
   if not (null cycles)
     then resultE $ CyclicFileGraph cycles

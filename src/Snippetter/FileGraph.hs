@@ -1,13 +1,14 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 -- | A graph, used for site dependency management.
 module Snippetter.FileGraph
   ( -- * Basics
-    FileGraph (files, parentToChild, childToParent)
+    FileGraph (nodes, parentToChild, childToParent)
   , GraphError
   , GraphResult
   , SCComponent
-  , FileMapping
+  , Mapping
     -- * Graph info accessing
-  , empty
   , notEmptyParentToChild
   , notEmptyChildToParent
   , getChildren
@@ -20,43 +21,44 @@ module Snippetter.FileGraph
   , showSCC
   , getRoots
     -- * Graph creation
-  , graphFromMapping
-  , graphFromMappings
+  , empty
     -- * Graph modification
-  , addFile
-  , addFiles
-  , addChild
+  , addNode
+  , addNodes
+  , addEdge
   , addChildren
   , addMultipleChildren
   , addParents
+  , addSiteAction
   ) where
 
 import Control.Monad
 import Control.Monad.State
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
+import Data.Hashable
 import Data.List
 import Data.Maybe
 import qualified Data.Text as T
 import Debug.Trace
+import GHC.Generics
 import Snippetter.Build
+import Snippetter.Layout
 import Snippetter.IO
 import Snippetter.Utilities
-
--- | Shorthand for a mapping from a file to a set of files.
-type FileMapping = HM.HashMap FilePath FilePathSet
 
 -- | Possible errors when executing graph operations.
 data GraphError
   = GraphFileError FileError
-  | MissingKey FilePath
+  | GraphLayoutError LayoutError
+  | MissingKey Node
   | OtherGraphError T.Text
   deriving (Eq)
 
 instance Show GraphError where
   show (GraphFileError e) = show e
   show (MissingKey k) =
-    "The following key was missing from the file graph: " <> k
+    "The following key was missing from the file graph: " <> show k
   show (OtherGraphError t) =
     "An error occured while determining dependencies: " <> T.unpack t
 
@@ -71,18 +73,45 @@ type GraphResult m a = Result GraphError m a
 -- a child of file A. 
 data FileGraph =
   FileGraph
-    { files :: FilePathSet
-    , parentToChild :: FileMapping
-    , childToParent :: FileMapping
+    { nodes :: NodeSet
+    , parentToChild :: Mapping
+    , childToParent :: Mapping
     }
   deriving (Show, Eq)
 
+data Node
+  = File FilePath
+  | Action PathedSiteAction
+  deriving (Show, Eq, Generic)
+
+data NodeType = FileType | ActionType deriving (Show, Eq)
+
+instance Hashable Node
+
+type NodeSet = HS.HashSet Node
+
+isNodeType :: Node -> NodeType -> Bool
+isNodeType (File _) FileType = True
+isNodeType (Action _) ActionType = True
+isNodeType _ _ = False
+
+fileFromNode :: Node -> Maybe FilePath
+fileFromNode (File a) = Just a
+fileFromNode (Action _) = Nothing
+
+actionFromNode :: Node -> Maybe PathedSiteAction
+actionFromNode (Action a) = Just a
+actionFromNode (File _) = Nothing
+
+-- | Shorthand for a mapping from a file to a set of files.
+type Mapping = HM.HashMap Node NodeSet
+
 -- | Get parent-to-child mappings, excluding files that have no children.
-notEmptyParentToChild :: FileGraph -> FileMapping
+notEmptyParentToChild :: FileGraph -> Mapping
 notEmptyParentToChild = HM.filter (not . HS.null) . parentToChild
 
 -- | Get child-to-parent mappings, excluding files that have no parents.
-notEmptyChildToParent :: FileGraph -> FileMapping
+notEmptyChildToParent :: FileGraph -> Mapping
 notEmptyChildToParent = HM.filter (not . HS.null) . childToParent
 
 -- | Creates an empty FileGraph.
@@ -90,102 +119,146 @@ empty :: FileGraph
 empty = FileGraph HS.empty HM.empty HM.empty
 
 -- | Update the file set if it exists, or insert a new one if it doesn't.
-addOrAdjust :: FilePath -> FilePathSet -> FileMapping -> FileMapping
+addOrAdjust :: Node -> NodeSet -> Mapping -> Mapping
 addOrAdjust key set map =
   if HM.member key map
     then HM.adjust (HS.union set) key map
     else HM.insert key set map
 
-addOrAdjustSingle :: FilePath -> FilePath -> FileMapping -> FileMapping
+addOrAdjustSingle :: Node -> Node -> Mapping -> Mapping
 addOrAdjustSingle aa bb = addOrAdjust aa (HS.singleton bb)
 
--- | Creates an singleton FileGraph from one mapping.
-graphFromMapping :: FilePath -> FilePathSet -> FileGraph
-graphFromMapping path children = addChildren path children empty
-
--- | Creates a FileGraph from multiple mappings.
-graphFromMappings :: [(FilePath, FilePathSet)] -> FileGraph
-graphFromMappings mappings = addMultipleChildren mappings empty
-
 -- | Map the key to an empty set.
-addBlankEntry :: FilePath -> FileMapping -> FileMapping
-addBlankEntry key = addOrAdjust key HS.empty
+addBlankNode :: Node -> Mapping -> Mapping
+addBlankNode key = addOrAdjust key HS.empty
 
 -- | Map each key in the set to empty sets.
-addBlankEntries :: FilePathSet -> FileMapping -> FileMapping
-addBlankEntries children mapping =
-  foldr addBlankEntry mapping $ HS.toList children
+addBlankNodes :: NodeSet -> Mapping -> Mapping
+addBlankNodes children mapping =
+  foldr addBlankNode mapping $ HS.toList children
 
 -- | Add a file to the graph without any parent-child relationship.
-addFile :: FilePath -> FileGraph -> FileGraph
-addFile newChild graph = FileGraph newFiles newP2C newC2P
+addNode :: Node -> FileGraph -> FileGraph
+addNode newChild graph = FileGraph newNodes newP2C newC2P
   where
-    newFiles = HS.unions [HS.singleton newChild, files graph]
-    newP2C = addBlankEntry newChild $ parentToChild graph
-    newC2P = addBlankEntry newChild $ childToParent graph
+    newNodes = HS.unions [HS.singleton newChild, nodes graph]
+    newP2C = addBlankNode newChild $ parentToChild graph
+    newC2P = addBlankNode newChild $ childToParent graph
 
 -- | Add multiple files to the graph without any parent-child relationship.
-addFiles :: FilePathSet -> FileGraph -> FileGraph
-addFiles mappings graph = foldr addFile graph mappings
+addNodes :: NodeSet -> FileGraph -> FileGraph
+addNodes mappings graph = foldr addNode graph mappings
 
 -- | Adds a single parent-child mapping to an existing @FileGraph@.
-addChild :: FilePath -> FilePath -> FileGraph -> FileGraph
-addChild pp cc graph = FileGraph newFiles newP2C newC2P
+addEdge :: Node -> Node -> FileGraph -> FileGraph
+addEdge pp cc graph = FileGraph newFiles newP2C newC2P
   where
-    newFiles = HS.union (HS.fromList [pp, cc]) (files graph)
+    newFiles = HS.union (HS.fromList [pp, cc]) (nodes graph)
     newP2C =
       addOrAdjustSingle pp cc $
-      addBlankEntry pp $ addBlankEntry cc $ parentToChild graph
+      addBlankNode pp $ addBlankNode cc $ parentToChild graph
     newC2P =
       addOrAdjustSingle cc pp $
-      addBlankEntry pp $ addBlankEntry cc $ childToParent graph
+      addBlankNode pp $ addBlankNode cc $ childToParent graph
 
 -- | Maps multiple children to the same parent in an existing @FileGraph@.
-addChildren :: FilePath -> FilePathSet -> FileGraph -> FileGraph
+addChildren :: Node -> NodeSet -> FileGraph -> FileGraph
 addChildren newParent newChildren graph =
   foldr add graph $ HS.toList newChildren
   where
-    add = addChild newParent
+    add = addEdge newParent
 
 -- | Adds multiple mappings to an existing FileGraph. If a mapping for that
 -- file already exists, the children will be added to the ones that already
 -- exist.
-addMultipleChildren :: [(FilePath, FilePathSet)] -> FileGraph -> FileGraph
+addMultipleChildren :: [(Node, NodeSet)] -> FileGraph -> FileGraph
 addMultipleChildren mappings graph = foldr add graph mappings
   where
     add (path, children) = addChildren path children
 
 -- | Maps multiple parents to the same child in an existing @FileGraph@.
-addParents :: FilePath -> FilePathSet -> FileGraph -> FileGraph
+addParents :: Node -> NodeSet -> FileGraph -> FileGraph
 addParents newChild newParents graph = foldr add graph $ HS.toList newParents
   where
-    add = flip addChild newChild
+    add = flip addEdge newChild
+
+-- | Add entries to a @FileGraph@ based on a @SiteAction@ and its
+-- output/dependencies.
+addSiteAction ::
+     MonadReadWorld m
+  => PathedSiteAction
+  -> FileGraph
+  -> GraphResult m FileGraph
+addSiteAction sa graph = do
+  deps <- psaNeededFiles sa `mapResultError` GraphLayoutError
+  let saNode = Action sa
+  let depsNodes = mapSet File deps
+  let addedDeps = addParents saNode depsNodes graph
+  case psaOutputFile sa of
+    Nothing -> return addedDeps
+    Just f -> return $ addEdge saNode (File f) addedDeps
 
 -- | Returns the set of children of the given file.
-getChildren :: FilePath -> FileGraph -> Maybe FilePathSet
+getChildren :: Node -> FileGraph -> Maybe NodeSet
 getChildren path graph = HM.lookup path (parentToChild graph)
 
 -- | Returns the set of children of the given file (and errors if no mappings
 -- for that file exist)
-getChildren' :: FilePath -> FileGraph -> FilePathSet
+getChildren' :: Node -> FileGraph -> NodeSet
 getChildren' path graph =
   fromMaybe (error "node doesn't exist") (getChildren path graph)
 
 -- | Returns the set of direct parents of the given file.
-getParents :: FilePath -> FileGraph -> Maybe FilePathSet
+getParents :: Node -> FileGraph -> Maybe NodeSet
 getParents path graph = HM.lookup path (childToParent graph)
 
 -- | Returns the set of direct parents of the given file (and will error if no
 -- mappings for that file exist)
-getParents' :: FilePath -> FileGraph -> FilePathSet
+getParents' :: Node -> FileGraph -> NodeSet
 getParents' path graph =
   fromMaybe (error "node doesn't exist") (getParents path graph)
 
--- | Checks if the a file in the graph is up to date.
-isUpToDate :: MonadReadWorld m => FilePath -> FileGraph -> GraphResult m Bool
-isUpToDate file graph =
-  case getParents file graph of
-    Nothing -> resultE $ MissingKey file
+typeLookup ::
+     NodeType -> (Node -> FileGraph -> NodeSet) ->
+     Node -> FileGraph -> Maybe NodeSet
+typeLookup nodeType lookup node graph =
+  if not $ node `HS.member` nodes graph
+    then Nothing
+    else Just $ rec node
+  where rec :: Node -> NodeSet
+        rec node = 
+          if isNodeType node nodeType
+            then HS.singleton node
+            else do
+                let newNodes = lookup node graph
+                HS.unions $ map rec $ HS.toList newNodes
+
+getFileParents :: Node -> FileGraph -> Maybe FilePathSet
+getFileParents node graph = do
+  lookedUp <-  typeLookup FileType getParents' node graph
+  Just $ mapSetMaybe fileFromNode lookedUp
+
+getFileChildren :: Node -> FileGraph -> Maybe FilePathSet
+getFileChildren node graph = do
+  lookedUp <-  typeLookup FileType getChildren' node graph
+  Just $ mapSetMaybe fileFromNode lookedUp
+
+getActionParents :: Node -> FileGraph -> Maybe SiteActionSet
+getActionParents node graph = do
+  lookedUp <-  typeLookup ActionType getParents' node graph
+  Just $ mapSetMaybe actionFromNode lookedUp
+
+getActionChildren :: Node -> FileGraph -> Maybe SiteActionSet
+getActionChildren node graph = do
+  lookedUp <-  typeLookup ActionType getChildren' node graph
+  Just $ mapSetMaybe actionFromNode lookedUp
+
+-- | Checks if the file in the graph is up to date.
+isUpToDate :: MonadReadWorld m =>
+    FilePath -> FileGraph -> GraphResult m Bool
+isUpToDate file graph = let node = File file in
+  case getFileParents node graph of
+    Nothing -> resultE $ MissingKey node
     Just p -> do
       results <- resultLift $ mapM (isYounger file) (HS.toList p)
       if null results
@@ -194,7 +267,8 @@ isUpToDate file graph =
 
 -- | Checks if a set of files in the graph are up to date.
 areUpToDate ::
-     MonadReadWorld m => FilePathSet -> FileGraph -> GraphResult m Bool
+     MonadReadWorld m =>
+         HS.HashSet FilePath -> FileGraph -> GraphResult m Bool
 areUpToDate targets graph = do
   list <- mapM (`isUpToDate` graph) (HS.toList targets)
   return $ and list
@@ -214,7 +288,7 @@ isYounger target dep = do
         Right d -> return $ t > d
 
 -- | Checks if the node is its own parent.
-isOwnParent :: FilePath -> FileGraph -> Bool
+isOwnParent :: Node -> FileGraph -> Bool
 isOwnParent node graph = node `HS.member` (parentToChild graph HM.! node)
 
 -- | Get a list of strongly connected components in a graph. Single-node SCCs
@@ -230,7 +304,7 @@ getSCC graph =
     stateFunc = do
       state <- get
       let graph = sccGraph state
-      forM_ (HS.toList $ files graph) $ \child ->
+      forM_ (HS.toList $ nodes graph) $ \child ->
         if not (child `HM.member` sccMappings state)
           then sccPerNode child
           else modify id
@@ -240,14 +314,14 @@ data SCCState =
   SCCState
     { sccGraph :: FileGraph
     , sccIndex :: Int
-    , sccMappings :: HM.HashMap FilePath (Int, Int)
-    , sccStack :: [FilePath]
+    , sccMappings :: HM.HashMap Node (Int, Int)
+    , sccStack :: [Node]
     , sccComponents :: [SCComponent]
     }
   deriving (Show, Eq)
 
 -- | Represents the @FilePath@s in a strongly connected component.
-type SCComponent = [FilePath]
+type SCComponent = [Node]
 
 -- | Convert a @[SCComponent]@ to a human-readable string representation.
 showSCC :: [SCComponent] -> T.Text
@@ -255,11 +329,11 @@ showSCC scc = indentMultiWithListMarker $ map showSingleSCC scc
 
 showSingleSCC :: SCComponent -> T.Text
 showSingleSCC component =
-  T.pack (foldr foo "" component <> "\"" <> head component <> "\"")
+  T.pack (foldl foo "" component <> "\"" <> show (head component) <> "\"")
   where
-    foo prev comp = "\"" <> prev <> "\" -> " <> comp
+    foo prev comp = "\"" <> prev <> "\" -> " <> show comp
 
-sccPerNode :: FilePath -> State SCCState ()
+sccPerNode :: Node -> State SCCState ()
 sccPerNode node = do
   modify $ sccInitial node
   state <- get
@@ -275,7 +349,7 @@ sccPerNode node = do
              else modify id
   modify $ sccAddComponent node
 
-sccUnDefMod :: FilePath -> FilePath -> SCCState -> SCCState
+sccUnDefMod :: Node -> Node -> SCCState -> SCCState
 sccUnDefMod v w state = state {sccMappings = HM.adjust mod v mappings}
   where
     mappings = sccMappings state
@@ -283,7 +357,7 @@ sccUnDefMod v w state = state {sccMappings = HM.adjust mod v mappings}
     (wInd, wLow) = mappings HM.! w
     mod _ = (vInd, min vLow wLow)
 
-sccOnStackMod :: FilePath -> FilePath -> SCCState -> SCCState
+sccOnStackMod :: Node -> Node -> SCCState -> SCCState
 sccOnStackMod v w state = state {sccMappings = HM.adjust mod v mappings}
   where
     mappings = sccMappings state
@@ -291,7 +365,7 @@ sccOnStackMod v w state = state {sccMappings = HM.adjust mod v mappings}
     (wInd, wLow) = mappings HM.! w
     mod _ = (vInd, min vLow wInd)
 
-sccInitial :: FilePath -> SCCState -> SCCState
+sccInitial :: Node -> SCCState -> SCCState
 sccInitial node state =
   state
     { sccIndex = newInd
@@ -301,7 +375,7 @@ sccInitial node state =
   where
     newInd = sccIndex state + 1
 
-sccAddComponent :: FilePath -> SCCState -> SCCState
+sccAddComponent :: Node -> SCCState -> SCCState
 sccAddComponent node state =
   if ind == low
     then state {sccStack = newStack, sccComponents = newComponents}
@@ -316,7 +390,7 @@ sccAddComponent node state =
 -- node in that set as an indirect parent. All nodes in the input set will
 -- either be a node in the output set, or the indirect child of a node in the
 -- output set.
-getRoots :: FilePathSet -> FileGraph -> FilePathSet
+getRoots :: NodeSet -> FileGraph -> NodeSet
 getRoots set graph = evalState stateFunc init
   where
     init = RootState graph HM.empty HS.empty
@@ -327,11 +401,11 @@ getRoots set graph = evalState stateFunc init
 data RootState =
   RootState
     { rootGraph :: FileGraph
-    , rootVisited :: FileMapping
-    , rootParents :: FilePathSet
+    , rootVisited :: Mapping
+    , rootParents :: NodeSet
     }
 
-rootPerNode :: FilePath -> State RootState ()
+rootPerNode :: Node -> State RootState ()
 rootPerNode path = do
   state <- get
   let graph = rootGraph state
@@ -344,12 +418,12 @@ rootPerNode path = do
     put $ state {rootVisited = children, rootParents = newParents}
 
 -- | Get all children of the provided node.
-getAllChildren :: FilePath -> FileGraph -> FilePathSet
+getAllChildren :: Node -> FileGraph -> NodeSet
 getAllChildren path = getAllChildren' (HS.singleton path)
   -- HS.fromList $ HM.keys $ getAllChildrenCache path graph HM.empty
 
 -- | Get all children of all provided nodes.
-getAllChildren' :: FilePathSet -> FileGraph -> FilePathSet
+getAllChildren' :: NodeSet -> FileGraph -> NodeSet
 getAllChildren' set graph = evalState stateFunc init
   where
     init = RootState graph HM.empty HS.empty
@@ -357,10 +431,10 @@ getAllChildren' set graph = evalState stateFunc init
       forM_ (HS.toList set) $ \child -> rootPerNode child
       gets (HS.fromList . HM.keys . rootVisited)
 
-getAllChildrenCache :: FilePath -> FileGraph -> FileMapping -> FileMapping
+getAllChildrenCache :: Node -> FileGraph -> Mapping -> Mapping
 getAllChildrenCache path graph = execState (getAllChildrenCache' path graph)
 
-getAllChildrenCache' :: FilePath -> FileGraph -> State FileMapping FilePathSet
+getAllChildrenCache' :: Node -> FileGraph -> State Mapping NodeSet
 getAllChildrenCache' path graph = do
   cache <- get
   if HM.member path cache

@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 -- | Contains functions/types related to loading and executing layout files.
 module Snippetter.Layout
@@ -12,6 +13,7 @@ module Snippetter.Layout
   -- * Site Actions
   , SiteAction (..)
   , PathedSiteAction (..)
+  , SiteActionSet
   , extractAction
   , extractPath
   , loadLayoutFile
@@ -37,11 +39,13 @@ import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
 import qualified Data.Text as T
 import Data.Yaml ((.:))
+import Data.Hashable
 import Data.List
 import Data.Maybe
 import qualified Data.Yaml as Y
 import Prelude hiding (writeFile)
 import Control.Monad
+import GHC.Generics
 import Snippetter.Build
 import Snippetter.IO
 import Snippetter.Utilities
@@ -124,13 +128,29 @@ data SiteAction
   | Run T.Text [T.Text] T.Text
   deriving (Show, Eq)
 
+instance Hashable SiteAction where
+    hashWithSalt salt (Build nb pp fp) = salt `hashWithSalt` 
+        (0 :: Int) `hashWithSalt` fp
+    hashWithSalt salt (Copy from to) = salt `hashWithSalt` 
+        (1 :: Int) `hashWithSalt` from `hashWithSalt` to
+    hashWithSalt salt (Move from to) = salt `hashWithSalt` 
+        (2 :: Int) `hashWithSalt` from `hashWithSalt` to
+    hashWithSalt salt (Delete file) = salt `hashWithSalt` 
+        (3 :: Int) `hashWithSalt` file
+    hashWithSalt salt (Run process _ _) = salt `hashWithSalt` 
+        (4 :: Int) `hashWithSalt` process
+
 -- | A 'SiteAction' that may have a file path associated with it, which
 -- represents where it came from.
 -- If loaded from a file, the path should be assigned when doing so.
 -- If defined in a source file, the path should be @Nothing@.
 data PathedSiteAction
   = PathedSiteAction SiteAction (Maybe FilePath)
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
+
+type SiteActionSet = HS.HashSet PathedSiteAction
+
+instance Hashable PathedSiteAction
 
 -- | Extract the 'SiteAction' from a 'PathedSiteAction'.
 extractAction :: PathedSiteAction -> SiteAction

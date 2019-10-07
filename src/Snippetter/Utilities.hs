@@ -29,6 +29,8 @@ module Snippetter.Utilities
   , (<\>)
   , (<\\>)
     -- * Misc utilities
+  , mapSet
+  , mapSetMaybe
   , unRight
   , unJust
   , mapLeft
@@ -44,6 +46,7 @@ import Data.HashMap.Strict (HashMap, lookup)
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
 import Data.Hashable
+import Data.Maybe
 import Data.List.Split
 import qualified Data.Text as T
 import Prelude hiding (lookup)
@@ -108,6 +111,16 @@ nullParams = HM.null
 -- will be the value in the result.
 paramUnion :: Params -> Params -> Params
 paramUnion = HM.union
+
+-- | Maps all elements in a 'HS.HashSet'.
+mapSet :: (Eq b, Hashable b) => (a -> b) -> HS.HashSet a -> HS.HashSet b
+mapSet func set = HS.fromList $ map func $ HS.toList set
+
+-- | Maps all elements in a 'HS.HashSet'. Only 'Just' results are included: the
+-- rest are discarded.
+mapSetMaybe :: (Eq b, Hashable b) =>
+    (a -> Maybe b) -> HS.HashSet a -> HS.HashSet b
+mapSetMaybe func set = HS.fromList $ mapMaybe func $ HS.toList set
 
 -- | Retrieves the value from a @Either@ if it's @Right@, and errors otherwise.
 unRight :: Either e a -> a

@@ -95,14 +95,24 @@ testRoots =
     pFiles (roots set3 graph1) set3
   , testCase "a -> b -> c, roots of ab" $
     pFiles (roots (HS.fromList [n1, n2]) graph1) set1
+  , testCase "a -> b -> c, roots of bc" $
+    pFiles (roots (HS.fromList [n3, n2]) graph1) set2
+  , testCase "a -> b -> c, roots of abc" $
+    pFiles (roots (HS.fromList [n1, n2, n3]) graph1) set1
   , testCase "a -> bc -> d, roots of bcd" $
     pFiles (roots (HS.fromList [n2, n4, pCombined]) graph2) $ HS.fromList [n2, n4]
   , testCase "a -> bc -> d, roots of bc" $
     pFiles (roots (HS.fromList [n2, n4]) graph2) $ HS.fromList [n2, n4]
   , testCase "a -> bc -> d, roots of abd" $
     pFiles (roots (HS.fromList [n1, n2, pCombined]) graph2) set1
-  , testCase "a -> bc -> d, roots of abc" $
+  , testCase "a -> bc -> d, roots of acd" $
     pFiles (roots (HS.fromList [n1, n4, pCombined]) graph2) set1
+  , testCase "a -> bc -> d, roots of abc" $
+    pFiles (roots (HS.fromList [n1, n4, n2]) graph2) set1
+  , testCase "a -> bc -> d, roots of ad" $
+    pFiles (roots (HS.fromList [n1, pCombined]) graph2) set1
+  , testCase "a -> bc -> d, roots of abcd" $
+    pFiles (roots (HS.fromList [n1, n2, n4, pCombined]) graph2) set1
   ]
   where
     n1 = PathedSiteAction (Copy "foo" "bar") Nothing

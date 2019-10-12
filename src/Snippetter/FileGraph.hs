@@ -425,12 +425,7 @@ sccAddComponent node state =
 -- either be a node in the output set, or the indirect child of a node in the
 -- output set.
 getRoots :: NodeSet -> FileGraph -> NodeSet
-getRoots set graph = evalState stateFunc init
-  where
-    init = RootState graph HM.empty HS.empty
-    stateFunc = do
-      forM_ (HS.toList set) $ \child -> rootPerNode child
-      gets rootParents
+getRoots set graph = HS.difference set $ getAllChildren' set graph
 
 -- | For a given set of 'PathedSiteAction's, filter out actions from that set
 -- that have another action in that set as an indirect parent. All nodes in the
@@ -445,8 +440,7 @@ getRootsOfActions actions graph = do
 data RootState =
   RootState
     { rootGraph :: FileGraph
-    , rootVisited :: Mapping
-    , rootParents :: NodeSet
+    , rootVisited :: NodeSet
     }
 
 rootPerNode :: Node -> State RootState ()
@@ -454,26 +448,21 @@ rootPerNode path = do
   state <- get
   let graph = rootGraph state
   let visited = rootVisited state
-  let parents = rootParents state
-  unless (HM.member path visited) $ do
-    let children = getAllChildrenCache path graph visited
-    let childrenSet = HS.fromList $ HM.keys children
-    let newParents = HS.insert path parents
-    put $ state {rootVisited = children, rootParents = newParents}
+  let children = HS.delete path $ getAllChildrenCache path graph visited
+  put $ state {rootVisited = HS.union children visited}
 
 -- | Get all children of the provided node.
 getAllChildren :: Node -> FileGraph -> NodeSet
 getAllChildren path = getAllChildren' (HS.singleton path)
-  -- HS.fromList $ HM.keys $ getAllChildrenCache path graph HM.empty
 
 -- | Get all children of all provided nodes.
 getAllChildren' :: NodeSet -> FileGraph -> NodeSet
 getAllChildren' set graph = evalState stateFunc init
   where
-    init = RootState graph HM.empty HS.empty
+    init = RootState graph HS.empty
     stateFunc = do
       forM_ (HS.toList set) $ \child -> rootPerNode child
-      gets (HS.fromList . HM.keys . rootVisited)
+      gets rootVisited
 
 -- | Get all children 'PathedSiteAction's of all the provided ones.
 getAllChildrenActions ::
@@ -483,16 +472,18 @@ getAllChildrenActions actions graph = do
     let allChildren = getAllChildren' nodes graph
     mapMaybe actionFromNode $ HS.toList allChildren
 
-getAllChildrenCache :: Node -> FileGraph -> Mapping -> Mapping
-getAllChildrenCache path graph = execState (getAllChildrenCache' path graph)
+getAllChildrenCache :: Node -> FileGraph -> NodeSet -> NodeSet
+getAllChildrenCache path graph cache = HS.union state result
+  where
+    (result, state) = runState (getAllChildrenCache' path graph) cache
 
-getAllChildrenCache' :: Node -> FileGraph -> State Mapping NodeSet
+getAllChildrenCache' :: Node -> FileGraph -> State NodeSet NodeSet
 getAllChildrenCache' path graph = do
   cache <- get
-  if HM.member path cache
-    then return $ cache HM.! path
+  if HS.member path cache
+    then return cache
     else do
+      modify $ HS.insert path
       let kids f = getAllChildrenCache' f graph
       result <- mapM kids $ HS.toList $ parentToChild graph HM.! path
-      modify $ HM.insert path (HS.unions result)
-      return $ HS.unions result
+      get

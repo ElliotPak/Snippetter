@@ -31,10 +31,10 @@ noFileBuilder :: Builder
 noFileBuilder params = return $ text "foo"
 
 sameFileBuild =
-  Build (UnnamedBuilder sameFileBuilder) (makePathed emptyParams) "output"
+  Build (NamedBuilder "same" sameFileBuilder) (makePathed emptyParams) "output"
 
 noFileBuild =
-  Build (UnnamedBuilder noFileBuilder) (makePathed emptyParams) "output"
+  Build (NamedBuilder "no" noFileBuilder) (makePathed emptyParams) "output"
 
 fromText str =
   unObject (Y.decodeEither' (B.pack str) :: Either Y.ParseException Y.Value)

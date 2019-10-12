@@ -9,36 +9,17 @@ module Snippetter.FileGraph
   , GraphError
   , GraphResult
   , SCComponent
-  , Mapping
-    -- * Graph info accessing
-  , notEmptyParentToChild
-  , notEmptyChildToParent
-  , getChildren
-  , getAllChildren
-  , getAllChildren'
-  , getParents
-  , isUpToDate
-  , areUpToDate
+    -- * Creation and Modification
+  , empty
+  , fromSiteActions
+  , addSiteAction
+    -- * Retrieving info
   , getSCC
   , showSCC
-  , getRoots
-    -- * Action-specific accessing
-  , outputsUpToDate
-  , depsUpToDate
   , shouldUpdateSiteAction
   , childrenToUpdate
   , getRootsOfActions
   , getAllChildrenActions
-    -- * Graph creation
-  , empty
-    -- * Graph modification
-  , addNode
-  , addNodes
-  , addEdge
-  , addChildren
-  , addMultipleChildren
-  , addParents
-  , addSiteAction
   ) where
 
 import Control.Monad
@@ -48,6 +29,7 @@ import qualified Data.HashSet as HS
 import Data.Hashable
 import Data.List
 import Data.Maybe
+import Data.Foldable
 import qualified Data.Text as T
 import Debug.Trace
 import GHC.Generics
@@ -207,6 +189,10 @@ addSiteAction sa graph = do
     Nothing -> return addedDeps
     Just f -> return $ addEdge saNode (File f) addedDeps
 
+fromSiteActions :: 
+     MonadReadWorld m => [PathedSiteAction] -> GraphResult m FileGraph
+fromSiteActions = foldrM addSiteAction empty
+
 -- | Returns the set of children of the given file.
 getChildren :: Node -> FileGraph -> Maybe NodeSet
 getChildren path graph = HM.lookup path (parentToChild graph)
@@ -340,6 +326,7 @@ isOwnParent node graph = node `HS.member` (parentToChild graph HM.! node)
 -- represent cycles within the graph.
 getSCC :: FileGraph -> [SCComponent]
 getSCC graph =
+  map (mapMaybe fileFromNode) $
   filter (\a -> length a > 1 || (length a == 1 && isOwnParent (head a) graph)) $
   sccComponents $ execState stateFunc init
   where
@@ -359,12 +346,16 @@ data SCCState =
     , sccIndex :: Int
     , sccMappings :: HM.HashMap Node (Int, Int)
     , sccStack :: [Node]
-    , sccComponents :: [SCComponent]
+    , sccComponents :: [SCComponent']
     }
   deriving (Show, Eq)
 
--- | Represents the @FilePath@s in a strongly connected component.
-type SCComponent = [Node]
+-- | Represents the 'FilePath's in a strongly connected component.
+type SCComponent = [FilePath]
+
+-- | Represents the 'Node's in a strongly connected component.
+-- Only used internally.
+type SCComponent' = [Node]
 
 -- | Convert a @[SCComponent]@ to a human-readable string representation.
 showSCC :: [SCComponent] -> T.Text
@@ -374,7 +365,7 @@ showSingleSCC :: SCComponent -> T.Text
 showSingleSCC component =
   T.pack (foldl foo "" component <> "\"" <> show (head component) <> "\"")
   where
-    foo prev comp = "\"" <> prev <> "\" -> " <> show comp
+    foo prev f = "\"" <> prev <> "\" -> " <> f
 
 sccPerNode :: Node -> State SCCState ()
 sccPerNode node = do

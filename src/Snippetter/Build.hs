@@ -11,6 +11,7 @@ module Snippetter.Build
   , Builder
   , NamedBuilder(..)
   , PathedParams(..)
+  , emptyPathedParams
   , executeBuilder
   , filesForBuilder
   , showBuilder
@@ -90,20 +91,16 @@ type Builder = Params -> BuilderResult
 -- | A @Builder@ with an optional name.
 data NamedBuilder
   = NamedBuilder T.Text Builder
-  | UnnamedBuilder Builder
 
 instance Eq NamedBuilder where
   (NamedBuilder t1 _) == (NamedBuilder t2 _) = t1 == t2
-  _ == _ = False
 
 instance Show NamedBuilder where
   show (NamedBuilder t _) = "a builder named " <> T.unpack t
-  show (UnnamedBuilder _) = "an unnamed builder"
 
 -- | Extract the @Builder@ from a @NamedBuilder@.
 extractBuilder :: NamedBuilder -> Builder
 extractBuilder (NamedBuilder _ b) = b
-extractBuilder (UnnamedBuilder b) = b
 
 -- | A @Params@ value that may have a file path associated with it.
 --   If loaded from a file, the path should be assigned when doing so.
@@ -114,6 +111,9 @@ data PathedParams =
     , ppath :: Maybe FilePath
     }
   deriving (Show, Eq)
+
+-- | Creates a 'PathedParams' with no path or parameters.
+emptyPathedParams = PathedParams HM.empty Nothing
 
 -- | Things that can go wrong while a builder is being run.
 data BuilderError

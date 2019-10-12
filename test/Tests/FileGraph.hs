@@ -1,3 +1,6 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Tests.FileGraph
   ( tests
   ) where
@@ -12,257 +15,114 @@ import qualified Snippetter.FileGraph as FG
 import Snippetter.Helpers
 import Snippetter.IO
 import Snippetter.Layout
+import Snippetter.Utilities
 import Test.Tasty
 import Test.Tasty.HUnit
 import Tests.Helpers
 
 tests =
-  [ testCase "Getting Parents/Children" testGettingParentsAndChildren
-  , testGroup "Building Graphs" testBuildingGraphs
-  , testGroup "Checking Children" testCheckChildren
-  , testGroup "Checking Parents" testCheckParents
-  , testGroup "SCC" testCheckSCC
+  [ testGroup "SCC" testCheckSCC
   , testGroup "Roots" testRoots
   ]
 
-testGettingParentsAndChildren = do
-  let graph = FG.graphFromMapping "foo" $ HS.fromList ["bar", "baz"]
-  FG.parentToChild graph @?=
-    HM.fromList
-      [ ("foo", HS.fromList ["bar", "baz"])
-      , ("bar", HS.empty)
-      , ("baz", HS.empty)
-      ]
-  FG.childToParent graph @?=
-    HM.fromList
-      [ ("bar", HS.singleton "foo")
-      , ("baz", HS.singleton "foo")
-      , ("foo", HS.empty)
-      ]
-  FG.notEmptyParentToChild graph @?=
-    HM.fromList [("foo", HS.fromList ["bar", "baz"])]
-  FG.notEmptyChildToParent graph @?=
-    HM.fromList [("bar", HS.singleton "foo"), ("baz", HS.singleton "foo")]
-
-testBuildingGraphs =
-  [ testCase "Singleton graph" $ do
-      let graph = FG.graphFromMapping "foo" $ HS.fromList ["bar", "baz"]
-      FG.files graph @?= HS.fromList ["foo", "bar", "baz"]
-      FG.notEmptyParentToChild graph @?=
-        HM.fromList [("foo", HS.fromList ["bar", "baz"])]
-      FG.notEmptyChildToParent graph @?=
-        HM.fromList [("bar", HS.singleton "foo"), ("baz", HS.singleton "foo")]
-  , testCase "Multiple graphs" $ do
-      let mappings =
-            [ ("foo", HS.fromList ["bar", "baz"])
-            , ("yay", HS.fromList ["nay", "bray"])
-            ]
-      let graph = FG.graphFromMappings mappings
-      FG.files graph @?= HS.fromList ["foo", "yay", "bar", "baz", "nay", "bray"]
-      FG.notEmptyParentToChild graph @?= HM.fromList mappings
-      FG.notEmptyChildToParent graph @?=
-        HM.fromList
-          [ ("bar", HS.singleton "foo")
-          , ("baz", HS.singleton "foo")
-          , ("nay", HS.singleton "yay")
-          , ("bray", HS.singleton "yay")
-          ]
-  , testCase "Adding single mapping" $ do
-      let mappings =
-            [ ("foo", HS.fromList ["bar", "baz"])
-            , ("yay", HS.fromList ["nay", "bray"])
-            ]
-      let newChild = ("one", HS.fromList ["two", "three"])
-      let graph =
-            uncurry FG.addChildren newChild $ FG.graphFromMappings mappings
-      FG.files graph @?=
-        HS.fromList
-          ["foo", "yay", "bar", "baz", "nay", "bray", "one", "two", "three"]
-      FG.notEmptyParentToChild graph @?=
-        HM.union (uncurry HM.singleton newChild) (HM.fromList mappings)
-      FG.notEmptyChildToParent graph @?=
-        HM.fromList
-          [ ("bar", HS.singleton "foo")
-          , ("baz", HS.singleton "foo")
-          , ("nay", HS.singleton "yay")
-          , ("bray", HS.singleton "yay")
-          , ("two", HS.singleton "one")
-          , ("three", HS.singleton "one")
-          ]
-  , testCase "Adding multiple mapping" $ do
-      let mappings =
-            [ ("foo", HS.fromList ["bar", "baz"])
-            , ("yay", HS.fromList ["nay", "bray"])
-            ]
-      let newChildren =
-            [ ("one", HS.fromList ["two", "three"])
-            , ("four", HS.fromList ["five", "six"])
-            ]
-      let graph =
-            FG.addMultipleChildren newChildren $ FG.graphFromMappings mappings
-      FG.files graph @?=
-        HS.fromList
-          [ "foo"
-          , "yay"
-          , "bar"
-          , "baz"
-          , "nay"
-          , "bray"
-          , "one"
-          , "two"
-          , "three"
-          , "four"
-          , "five"
-          , "six"
-          ]
-      FG.notEmptyParentToChild graph @?=
-        HM.union (HM.fromList newChildren) (HM.fromList mappings)
-      FG.notEmptyChildToParent graph @?=
-        HM.fromList
-          [ ("bar", HS.singleton "foo")
-          , ("baz", HS.singleton "foo")
-          , ("nay", HS.singleton "yay")
-          , ("bray", HS.singleton "yay")
-          , ("two", HS.singleton "one")
-          , ("three", HS.singleton "one")
-          , ("five", HS.singleton "four")
-          , ("six", HS.singleton "four")
-          ]
-  , testCase "Same file, different deps" $ do
-      let mappings =
-            [ ("foo", HS.fromList ["bar", "baz"])
-            , ("foo", HS.fromList ["nay", "bray"])
-            ]
-      let graph = FG.graphFromMappings mappings
-      FG.files graph @?= HS.fromList ["foo", "bar", "baz", "nay", "bray"]
-      FG.notEmptyParentToChild graph @?=
-        HM.singleton "foo" (HS.fromList ["bar", "baz", "nay", "bray"])
-      FG.notEmptyChildToParent graph @?=
-        HM.fromList
-          [ ("bar", HS.singleton "foo")
-          , ("baz", HS.singleton "foo")
-          , ("nay", HS.singleton "foo")
-          , ("bray", HS.singleton "foo")
-          ]
-  , testCase "Looping graph" $ do
-      let mappings =
-            [ ("foo", HS.fromList ["bar", "asdf"])
-            , ("bar", HS.singleton "yay")
-            , ("yay", HS.singleton "foo")
-            , ("asdf", HS.singleton "hjkl")
-            ]
-      let graph = FG.graphFromMappings mappings
-      FG.files graph @?= HS.fromList ["hjkl", "foo", "bar", "yay", "asdf"]
-      FG.notEmptyParentToChild graph @?= HM.fromList mappings
-      FG.notEmptyChildToParent graph @?=
-        HM.fromList
-          [ ("hjkl", HS.singleton "asdf")
-          , ("foo", HS.singleton "yay")
-          , ("yay", HS.singleton "bar")
-          , ("bar", HS.singleton "foo")
-          , ("asdf", HS.singleton "foo")
-          ]
+files =
+  [ ("foo", ("", startTime))
+  , ("bar", ("", startTime))
+  , ("baz", ("", startTime))
+  , ("asdf", ("", startTime))
+  , ("hjkl", ("", startTime))
+  , ("zxcv", ("", startTime))
   ]
 
-testCheckChildren =
-  [ testCase "Empty graph" $ FG.getChildren "test" FG.empty @?= Nothing
-  , testCase "Populated graph, exists" $
-    FG.getChildren "foo" graph @?= Just (HS.fromList ["bar", "baz"])
-  , testCase "Populated graph, doesn't exist" $
-    FG.getChildren "whatever" graph @?= Nothing
-  , testCase "Populated graph, no children" $
-    FG.getChildren "bar" graph @?= Just HS.empty
-  ]
+pFiles :: 
+     (Eq a, Show a, Eq e, Show e)
+  => Result e MockIO a
+  -> a
+  -> Assertion
+pFiles = passMockFiles files
+
+fromRawActions :: 
+     MonadReadWorld m => [SiteAction] -> FG.GraphResult m FG.FileGraph
+fromRawActions acts = FG.fromSiteActions $ map foo acts
   where
-    graph =
-      FG.graphFromMappings
-        [ ("foo", HS.fromList ["bar", "baz"])
-        , ("yay", HS.fromList ["nay", "bray"])
-        ]
-
-testCheckParents =
-  [ testCase "Empty graph" $ FG.getParents "test" FG.empty @?= Nothing
-  , testCase "Populated graph, exists" $
-    FG.getParents "bar" graph @?= Just (HS.fromList ["foo"])
-  , testCase "Populated graph, doesn't exist" $
-    FG.getParents "whatever" graph @?= Nothing
-  , testCase "Populated graph, no parents" $
-    FG.getParents "foo" graph @?= Just HS.empty
-  ]
-  where
-    graph =
-      FG.graphFromMappings
-        [ ("foo", HS.fromList ["bar", "baz"])
-        , ("yay", HS.fromList ["nay", "bray"])
-        ]
+    foo sa = PathedSiteAction sa Nothing
 
 testCheckSCC =
   [ testCase "Empty graph" $ FG.getSCC FG.empty @?= []
   , testCase "Acyclic graph" $
-    FG.getSCC
-      (FG.graphFromMappings
-         [("foo", HS.fromList ["bar"]), ("bar", HS.singleton "yay")]) @?=
-    []
+    pFiles (scc [Copy "foo" "bar", Copy "bar" "yay"])
+      []
   , testCase "Looping graph 1" $
-    FG.getSCC
-      (FG.graphFromMappings
-         [("foo", HS.fromList ["bar"]), ("bar", HS.singleton "foo")]) @?=
-    [["foo", "bar"]]
+    pFiles (scc
+      [Copy "foo" "bar", Copy "bar" "foo"])
+      [["foo", "bar"]]
   , testCase "Looping graph 2" $
-    FG.getSCC
-      (FG.graphFromMappings
-         [ ("foo", HS.fromList ["bar", "asdf"])
-         , ("bar", HS.singleton "yay")
-         , ("yay", HS.singleton "foo")
-         , ("asdf", HS.singleton "hjkl")
-         ]) @?=
-    [["foo", "bar", "yay"]]
+    pFiles (scc
+      [ Copy "foo" "bar"
+      , Copy "foo" "asdf"
+      , Copy "bar" "yay"
+      , Copy "yay" "foo"
+      , Copy "asdf" "hjkl"
+      ])
+      [["bar", "yay", "foo"]]
   , testCase "Self loop" $
-    FG.getSCC (FG.graphFromMappings [("foo", HS.fromList ["foo"])]) @?=
-    [["foo"]]
+    pFiles (scc [Copy "foo" "foo"]) [["foo"]]
   , testCase "Multiple loops" $
-    FG.getSCC
-      (FG.graphFromMappings
-         [ ("foo", HS.fromList ["bar", "asdf"])
-         , ("bar", HS.singleton "yay")
-         , ("yay", HS.singleton "foo")
-         , ("asdf", HS.singleton "hjkl")
-         , ("hjkl", HS.singleton "zxcv")
-         , ("zxcv", HS.singleton "asdf")
-         ]) @?=
-    [["foo", "bar", "yay"], ["hjkl", "zxcv", "asdf"]]
+    pFiles (scc
+      [ Copy "foo" "bar"
+      , Copy "foo" "asdf"
+      , Copy "bar" "yay"
+      , Copy "yay" "foo"
+      , Copy "asdf" "hjkl"
+      , Copy "hjkl" "zxcv"
+      , Copy "zxcv" "asdf"
+      ])
+      [["bar", "yay", "foo"], ["asdf", "hjkl", "zxcv"]]
   ]
+      where
+        scc acts = do
+          graph <- fromRawActions acts
+          return $ FG.getSCC graph
 
 testRoots =
-  [ testCase "Empty graph" $ FG.getRoots HS.empty FG.empty @?= HS.empty
+  [ testCase "Empty graph" $ 
+    pFiles (roots HS.empty []) HS.empty
   , testCase "a -> b -> c, roots of a" $
-    FG.getRoots (HS.singleton "foo") graph1 @?= HS.singleton "foo"
+    pFiles (roots set1 graph1) set1
   , testCase "a -> b -> c, roots of b" $
-    FG.getRoots (HS.singleton "bar") graph1 @?= HS.singleton "bar"
+    pFiles (roots set2 graph1) set2
   , testCase "a -> b -> c, roots of c" $
-    FG.getRoots (HS.singleton "yay") graph1 @?= HS.singleton "yay"
+    pFiles (roots set3 graph1) set3
   , testCase "a -> b -> c, roots of ab" $
-    FG.getRoots (HS.fromList ["foo", "bar"]) graph1 @?= HS.singleton "foo"
+    pFiles (roots (HS.fromList [n1, n2]) graph1) set1
   , testCase "a -> bc -> d, roots of bcd" $
-    FG.getRoots (HS.fromList ["yay", "bar", "asdf"]) graph2 @?=
-    HS.fromList ["yay", "bar"]
+    pFiles (roots (HS.fromList [n2, n4, pCombined]) graph2) $ HS.fromList [n2, n4]
   , testCase "a -> bc -> d, roots of bc" $
-    FG.getRoots (HS.fromList ["yay", "bar"]) graph2 @?=
-    HS.fromList ["yay", "bar"]
+    pFiles (roots (HS.fromList [n2, n4]) graph2) $ HS.fromList [n2, n4]
   , testCase "a -> bc -> d, roots of abd" $
-    FG.getRoots (HS.fromList ["foo", "bar", "asdf"]) graph2 @?=
-    HS.fromList ["foo"]
+    pFiles (roots (HS.fromList [n1, n2, pCombined]) graph2) set1
   , testCase "a -> bc -> d, roots of abc" $
-    FG.getRoots (HS.fromList ["foo", "bar", "yay"]) graph2 @?=
-    HS.fromList ["foo"]
+    pFiles (roots (HS.fromList [n1, n4, pCombined]) graph2) set1
   ]
   where
+    n1 = PathedSiteAction (Copy "foo" "bar") Nothing
+    n2 = PathedSiteAction (Copy "bar" "yay") Nothing
+    n3 = PathedSiteAction (Copy "yay" "asdf") Nothing
+    n4 = PathedSiteAction (Copy "bar" "asdf") Nothing
+    set1 = HS.singleton n1
+    set2 = HS.singleton n2
+    set3 = HS.singleton n3
     graph1 =
-      FG.graphFromMappings
-        [("foo", HS.singleton "bar"), ("bar", HS.singleton "yay")]
+        [Copy "foo" "bar", Copy "bar" "yay", Copy "yay" "asdf"]
     graph2 =
-      FG.graphFromMappings
-        [ ("foo", HS.fromList ["bar", "yay"])
-        , ("bar", HS.singleton "asdf")
-        , ("yay", HS.singleton "asdf")
+        [ Copy "foo" "bar"
+        , Copy "bar" "yay"
+        , Copy "bar" "asdf"
+        , combined 
         ]
+    combined = Build (NamedBuilder "combined" bb) emptyPathedParams "somewhere"
+    pCombined = PathedSiteAction combined Nothing
+    bb params = return $ doc (snippet "yay") [add $ snippet "asdf"]
+    roots rootsOf acts = do
+      graph <- fromRawActions acts
+      return $ FG.getRootsOfActions rootsOf graph

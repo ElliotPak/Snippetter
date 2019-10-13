@@ -44,7 +44,6 @@ module Snippetter.Build
   ) where
 
 import Control.Monad
-import Data.Aeson.Types (Object, Value(Object, String))
 import qualified Data.ByteString.Char8 as B
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS

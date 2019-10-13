@@ -20,11 +20,10 @@ module Snippetter.Helpers
   , subBuilderOnFile
   ) where
 
-import Data.Aeson.Types (Object, Value(Object, String))
+import Data.Yaml (Object, Value(Object, String))
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
 import Data.Hashable
-import Data.List.Split
 import qualified Data.Text as T
 import Prelude hiding (lookup)
 import Snippetter.Build

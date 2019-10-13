@@ -41,13 +41,12 @@ module Snippetter.Utilities
 import Control.Monad.Except
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
-import Data.Aeson.Types (Object, Value(Object, String))
+import Data.Yaml (Object, Value(Object, String))
 import Data.HashMap.Strict (HashMap, lookup)
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
 import Data.Hashable
 import Data.Maybe
-import Data.List.Split
 import qualified Data.Text as T
 import Prelude hiding (lookup)
 import System.FilePath

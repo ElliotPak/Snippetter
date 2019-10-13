@@ -23,15 +23,16 @@ import Tests.Helpers
 tests =
   [ testGroup "SCC" testCheckSCC
   , testGroup "Roots" testRoots
+  , testGroup "Should Update" testShouldUpdate
   ]
 
 files =
   [ ("foo", ("", startTime))
-  , ("bar", ("", startTime))
-  , ("baz", ("", startTime))
-  , ("asdf", ("", startTime))
-  , ("hjkl", ("", startTime))
-  , ("zxcv", ("", startTime))
+  , ("bar", ("", startTimeMinus 1))
+  , ("yay", ("", startTimeMinus 2))
+  , ("asdf", ("", startTimeMinus 3))
+  , ("hjkl", ("", startTimeMinus 4))
+  , ("zxcv", ("", startTimeMinus 5))
   ]
 
 pFiles :: 
@@ -136,3 +137,26 @@ testRoots =
     roots rootsOf acts = do
       graph <- fromRawActions acts
       return $ FG.getRootsOfActions rootsOf graph
+
+testShouldUpdate =
+  [ testCase "Dep exists, output doesn't" $
+    pFiles (update (Copy "foo" "output") [Copy "foo" "output"]) True
+  , testCase "Output exists, dep doesn't" $
+    pFiles (update (Copy "dep" "foo") [Copy "dep" "foo"]) False
+  , testCase "Both exist, dep < output" $
+    pFiles (update (Copy "bar" "foo") [Copy "bar" "foo"]) False
+  , testCase "Both exist, dep > output" $
+    pFiles (update (Copy "foo" "bar") [Copy "foo" "bar"]) True
+  , testCase "2 deps > output" $
+    pFiles (update (combined ["foo", "bar"] "yay") [combined ["foo", "bar"] "yay"]) True
+  , testCase "2 deps < output" $
+    pFiles (update (combined ["yay", "bar"] "foo") [combined ["yay", "bar"] "foo"]) False
+  ]
+  where
+    update act acts = do
+      graph <- fromRawActions acts
+      FG.shouldUpdateSiteAction graph (PathedSiteAction act Nothing)
+    bb files params = return $ doc emptyContent $ map addsnip files
+    addsnip file = add $ snippet file
+    combined files = Build (NamedBuilder "combined" (bb files)) emptyPathedParams
+    pCombined files out = PathedSiteAction (combined files out) Nothing

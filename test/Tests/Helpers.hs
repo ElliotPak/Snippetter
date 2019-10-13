@@ -33,7 +33,9 @@ instance MonadReadWorld MockIO where
   fileExists path = HM.member path . mockFilesystem <$> S.get
   fileModifyTime path = do
     state <- S.get
-    return $ snd $ mockFilesystem state HM.! path
+    if HM.member path (mockFilesystem state)
+      then return $ snd $ mockFilesystem state HM.! path
+      else resultE $ NotFound path
   currentTime = S.gets time
 
 instance MonadWriteWorld MockIO where
@@ -125,6 +127,8 @@ getMockState state et =
 startTime = UTCTime (fromGregorian 2019 1 1) 0
 
 startTimePlus digit = UTCTime (fromGregorian 2019 1 1) (realToFrac digit)
+
+startTimeMinus digit = UTCTime (fromGregorian 2019 1 1) (realToFrac (-digit))
 
 passMockFiles files = passMock (MockIOState (HM.fromList files) [] startTime)
 

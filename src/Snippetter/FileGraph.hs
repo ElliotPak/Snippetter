@@ -265,7 +265,9 @@ areUpToDate :: MonadReadWorld m =>
      FilePathSet -> FileGraph -> GraphResult m Bool
 areUpToDate targets graph = do
   list <- mapM (`isUpToDate` graph) (HS.toList targets)
-  return $ and list
+  if null list
+    then return True
+    else return $ and list
 
 -- | Check if the 'PathedSiteAction's output files are up to date.
 outputsUpToDate :: MonadReadWorld m =>

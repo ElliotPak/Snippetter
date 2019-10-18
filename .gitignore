@@ -1,3 +1,5 @@
 resources*
 build*
 dist*
+.cabal-sandbox
+.stack-work

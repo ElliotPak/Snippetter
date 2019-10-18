@@ -81,9 +81,9 @@ instance Hashable Node
 
 type NodeSet = HS.HashSet Node
 
-isNodeType :: Node -> NodeType -> Bool
-isNodeType (File _) FileType = True
-isNodeType (Action _) ActionType = True
+isNodeType :: NodeType -> Node -> Bool
+isNodeType FileType (File _) = True
+isNodeType ActionType (Action _) = True
 isNodeType _ _ = False
 
 fileFromNode :: Node -> Maybe FilePath
@@ -213,20 +213,21 @@ getParents' :: Node -> FileGraph -> NodeSet
 getParents' path graph =
   fromMaybe (error "node doesn't exist") (getParents path graph)
 
+-- | Look up nodes of specified type in the graph using lookup function.
 typeLookup ::
      NodeType -> (Node -> FileGraph -> NodeSet) ->
      Node -> FileGraph -> Maybe NodeSet
 typeLookup nodeType lookup node graph =
   if not $ node `HS.member` nodes graph
     then Nothing
-    else Just $ rec node
+    else Just $ newMapped node
   where rec :: Node -> NodeSet
-        rec node = 
-          if isNodeType node nodeType
+        rec node =
+          if isNodeType nodeType node
             then HS.singleton node
-            else do
-                let newNodes = lookup node graph
-                HS.unions $ map rec $ HS.toList newNodes
+            else newMapped node
+        newNodes node = lookup node graph
+        newMapped node = HS.unions $ map rec $ HS.toList $ newNodes node
 
 getFileParents :: Node -> FileGraph -> Maybe FilePathSet
 getFileParents node graph = do

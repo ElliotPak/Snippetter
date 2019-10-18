@@ -68,6 +68,8 @@ testCheckSCC =
       [["bar", "yay", "foo"]]
   , testCase "Self loop" $
     pFiles (scc [Copy "foo" "foo"]) [["foo"]]
+  , testCase "Not a self loop" $
+    pFiles (scc [Copy "foo" "bar"]) []
   , testCase "Multiple loops" $
     pFiles (scc
       [ Copy "foo" "bar"
@@ -151,6 +153,12 @@ testShouldUpdate =
     pFiles (update (combined ["foo", "bar"] "yay") [combined ["foo", "bar"] "yay"]) True
   , testCase "2 deps < output" $
     pFiles (update (combined ["yay", "bar"] "foo") [combined ["yay", "bar"] "foo"]) False
+  , testCase "2 deps but one < output" $
+    pFiles (update (combined ["yay", "foo"] "bar") [combined ["yay", "foo"] "bar"]) True
+  , testCase "2 deps but one doesn't exist" $
+    pFiles (update (combined ["foo", "non-existant"] "yay") [combined ["foo", "non-existant"] "yay"]) False
+  , testCase "2 deps but output doesn't exist" $
+    pFiles (update (combined ["foo", "bar"] "hey-folks") [combined ["foo", "bar"] "hey-folks"]) True
   ]
   where
     update act acts = do

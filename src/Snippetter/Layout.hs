@@ -239,7 +239,7 @@ showActions pathedActions = do
   result <- runResult $ mapM saShow actions
   case result of
     Right r ->
-        notifyInfo $ indentMultiWithListMarker r
+        notifyInfo $ indentMultiWithListMarker r <> "\n"
     Left l -> 
       notifyFailure $
       "Failed to display dependencies :\n" <> indentFour (T.pack $ show l)
@@ -251,7 +251,7 @@ previewActions pathedActions = do
   result <- runResult $ mapM saPreview actions
   case result of
     Right r ->
-        notifyInfo $ indentMultiWithListMarker r
+        notifyInfo $ indentMultiWithListMarker r <> "\n"
     Left l -> 
       notifyFailure $
       "Failed to display dependencies :\n" <> indentFour (T.pack $ show l)

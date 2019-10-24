@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 -- | A graph, used for site dependency management. This is used by other
 -- components: you shouldn't need to create your own 'FileGraph' when building
@@ -362,7 +363,7 @@ type SCComponent' = [Node]
 
 -- | Convert a @[SCComponent]@ to a human-readable string representation.
 showSCC :: [SCComponent] -> T.Text
-showSCC scc = indentMultiWithListMarker $ map showSingleSCC scc
+showSCC scc = indentMultiWithListMarker (map showSingleSCC scc) <> "\n"
 
 showSingleSCC :: SCComponent -> T.Text
 showSingleSCC component =

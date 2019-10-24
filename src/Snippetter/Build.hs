@@ -48,6 +48,7 @@ import qualified Data.ByteString.Char8 as B
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
 import qualified Data.Text as T
+import Data.Functor
 import Data.Yaml
 import qualified Data.Yaml as Y
 import Snippetter.IO
@@ -204,7 +205,7 @@ data Content
   | Snippet FilePath
   | Transform Content (T.Text -> Either T.Text T.Text)
   | Doc Content [Action]
-  | SubBuilder SubBuilderExec
+  | SubBuilder [SubBuilderExec]
   | EmptyContent
 
 instance Show Content where
@@ -215,7 +216,7 @@ conNeededFiles :: MonadReadWorld m => Content -> DocResult m FilePathSet
 conNeededFiles (Text _) = return HS.empty
 conNeededFiles (Snippet s) = return $ HS.singleton s
 conNeededFiles (Transform c _) = conNeededFiles c
-conNeededFiles (SubBuilder sme) = smNeededFiles sme
+conNeededFiles (SubBuilder sme) = mapM smNeededFiles sme <&> HS.unions
 conNeededFiles (Doc c d) = do
   dNeeded <- actListNeededFiles d
   cNeeded <- conNeededFiles c
@@ -229,7 +230,8 @@ conShow (Snippet s) = "Snippet named \"" <> T.pack s <> "\""
 conShow (Transform c f) = "Transformation of: " <\> indentFour pre
   where
     pre = conShow c
-conShow (SubBuilder sme) = "Builder executions:" <\\> indentFour (smShow sme)
+conShow (SubBuilder sme) =
+  "Builder executions:" <\\> (indentMultiWithListMarker $ map smShow sme)
 conShow (Doc c d) =
   "Doc containing " <\> indentFour (conShow c) <>
   "\n  With the following actions applied to it:\n" <> actions
@@ -249,8 +251,8 @@ conPreview (Transform c f) = do
   dryRun <- conPreview c
   return $ "Transformation of: " <\> indentFour dryRun
 conPreview (SubBuilder sme) = do
-  previewed <- smPreview sme
-  return $ "Builder executions:" <\\> indentFour previewed
+  previewed <- mapM smPreview sme <&> indentMultiWithListMarker
+  return $ "Builder executions:" <\\> previewed
 conPreview (Doc c d) = do
   cPreviewed <- conPreview c
   dPreviewed <- mapM actPreview d
@@ -268,13 +270,13 @@ conEvaluate (Snippet s) = fileContentsInDoc s
 conEvaluate (Transform c f) = do
   sub <- conEvaluate c
   resultLiftEither $ mapLeft TransformFailed $ f sub
-conEvaluate (SubBuilder sme) = smEvaluate sme
+conEvaluate (SubBuilder sme) = mapM smEvaluate sme <&> T.concat
 conEvaluate (Doc c d) = do
   initial <- conEvaluate c
   actListExecute d initial
 conEvaluate EmptyContent = return ""
 
--- | Determine files needed by a @[Action]@.
+-- | Determine files needed by a @[Action]@
 actListNeededFiles :: MonadReadWorld m => [Action] -> DocResult m FilePathSet
 actListNeededFiles doc = do
   mapped <- mapM actNeededFiles doc
@@ -291,7 +293,7 @@ data SubBuilderExec =
     { smBuilder :: NamedBuilder -- ^ The 'Builder' to use.
     , smDefault :: Params -- ^ Default 'Params'. If a 'Params' doesn't have a key from the defaults, the value from those defaults will be used.
     , smParams :: [PathedParams] -- ^ The 'Params' to operate on.
-    , smFiles :: FilePathSet -- ^ Parameter files to load and also operate on.
+    , smFiles :: [FilePath] -- ^ Parameter files to load and also operate on.
     }
 
 instance Show SubBuilderExec where
@@ -301,7 +303,7 @@ instance Show SubBuilderExec where
 --   default parameters applied.
 smFileParams :: MonadReadWorld m => SubBuilderExec -> DocResult m [PathedParams]
 smFileParams sm = do
-  params <- mapM paramsFromFile (HS.toList $ smFiles sm)
+  params <- mapM paramsFromFile (smFiles sm)
   return $ concat params
 
 -- | Load all parameters in a @SubBuilderExec@, with default parameters applied.
@@ -324,7 +326,7 @@ smNeededFiles sm = do
   params <- smAllParams sm
   entries <- builderWithParams (smBuilder sm) params
   containing <- conNeededFiles entries
-  return $ smFiles sm <> containing
+  return $ (HS.fromList $ smFiles sm) <> containing
 
 -- | Get a textual representation of a @Params@.
 showParams :: Params -> T.Text
@@ -354,7 +356,7 @@ smShow (SubBuilderExec m def pp f) = tDefaults <\\> tParams <\\> tFile
         ("Execution on these files:\n" :: T.Text) <>
         T.intercalate
           "\n"
-          (HS.toList (HS.map (indentWithListMarker . T.pack) f))
+          (map (indentWithListMarker . T.pack) f)
 
 -- | Preview a @SubBuilderExec@ with file reading (see @conPreview@).
 smPreview :: MonadReadWorld m => SubBuilderExec -> DocResult m T.Text

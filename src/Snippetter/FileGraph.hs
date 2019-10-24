@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 -- | A graph, used for site dependency management.
 module Snippetter.FileGraph
   ( -- * Basics
@@ -251,7 +253,7 @@ type SCComponent = [FilePath]
 
 -- | Convert a @[SCComponent]@ to a human-readable string representation.
 showSCC :: [SCComponent] -> T.Text
-showSCC scc = indentMultiWithListMarker $ map showSingleSCC scc
+showSCC scc = indentMultiWithListMarker (map showSingleSCC scc) <> "\n"
 
 showSingleSCC :: SCComponent -> T.Text
 showSingleSCC component =

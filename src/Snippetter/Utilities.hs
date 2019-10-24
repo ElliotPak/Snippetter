@@ -148,7 +148,10 @@ indentStr ind = unlines . map ((<>) $ replicate ind ' ') . lines
 -- | Like @indentFour@, except the first line is indented with "  - " instead
 -- of 4 spaces of 4 spaces.
 indentWithListMarker :: T.Text -> T.Text
-indentWithListMarker text = indentText 2 (h <> t)
+indentWithListMarker text =
+  if null lines
+    then ""
+    else indentText 2 (h <> t)
   where
     lines = T.lines text
     t = T.unlines $ (map (indentText 2) . tail) lines
@@ -158,7 +161,7 @@ indentWithListMarker text = indentText 2 (h <> t)
 -- together with newlines in between.
 indentMultiWithListMarker :: [T.Text] -> T.Text
 indentMultiWithListMarker markers =
-  T.intercalate "\n" (map indentWithListMarker markers) <> "\n"
+  T.intercalate "\n" (map indentWithListMarker markers)
 
 -- | Indent a Text by 4 spaces.
 indentFour :: T.Text -> T.Text

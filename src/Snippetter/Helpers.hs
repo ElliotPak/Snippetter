@@ -109,12 +109,18 @@ addText t = add $ text t
 replaceText :: T.Text -> T.Text -> Action
 replaceText t1 t2 = replace t1 $ text t2
 
--- | Public function for creating a @SubBuilder@ with just one @SubBuilderExec@.
+-- | Shorthand for creating a @SubBuilder@ with just one @SubBuilderExec@.
 singleSubBuilder ::
-     NamedBuilder -> Params -> [PathedParams] -> FilePathSet -> Content
-singleSubBuilder m p pp fp = subBuilder $ SubBuilderExec m p pp fp
+     NamedBuilder -> Params -> [PathedParams] -> [FilePath] -> Content
+singleSubBuilder m p pp fp = subBuilder $ [SubBuilderExec m p pp fp]
 
 -- | Shorthand for creating a @SubBuilder@ that executes the builder on one file.
 subBuilderOnFile :: NamedBuilder -> FilePath -> Content
 subBuilderOnFile m f =
-  subBuilder $ SubBuilderExec m emptyParams [] (HS.singleton f)
+  subBuilder $ [SubBuilderExec m emptyParams [] [f]]
+
+subBuildersOnFiles :: [(NamedBuilder, [FilePath])] -> Content
+subBuildersOnFiles mf = subBuilder $ map foo mf
+  where
+    foo (nb, paths) = SubBuilderExec nb emptyParams [] paths
+

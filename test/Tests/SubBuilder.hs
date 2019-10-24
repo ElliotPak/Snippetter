@@ -56,13 +56,21 @@ fromText str =
 
 makePathed o = PathedParams o Nothing
 
-params1 = fromText "title: foo"
+params1' =  fromText "title: foo"
 
-params2 = fromText "title: bar"
+params2' = fromText "title: bar"
 
-params3 = fromText "title: baz"
+params3' = fromText "title: baz"
 
-paramsNoTitle = fromText "something: test"
+paramsNoTitle' = fromText "something: test"
+
+params1 = makePathed params1'
+
+params2 = makePathed params2'
+
+params3 = makePathed params3'
+
+paramsNoTitle = makePathed paramsNoTitle'
 
 smEmpty = singleSubBuilder basicBuilder emptyParams [] []
 
@@ -71,69 +79,69 @@ smEmptySameFile = singleSubBuilder sameFileBuilder emptyParams [] []
 smEmptyFile = singleSubBuilder fileBuilder emptyParams [] []
 
 smSingle =
-  singleSubBuilder basicBuilder emptyParams [makePathed params2] []
+  singleSubBuilder basicBuilder emptyParams [params2] []
 
 smSingleFile =
-  singleSubBuilder fileBuilder emptyParams [makePathed params2] []
+  singleSubBuilder fileBuilder emptyParams [params2] []
 
 smSingleSameFile =
-  singleSubBuilder sameFileBuilder emptyParams [makePathed params2] []
+  singleSubBuilder sameFileBuilder emptyParams [params2] []
 
 smMultiple =
   singleSubBuilder
     basicBuilder
     emptyParams
-    [makePathed params1, makePathed params2, makePathed params3]
+    [params1, params2, params3]
     []
 
 smMultipleFile =
   singleSubBuilder
     fileBuilder
     emptyParams
-    [makePathed params1, makePathed params2, makePathed params3]
+    [params1, params2, params3]
     []
 
 smMultipleSameFile =
   singleSubBuilder
     sameFileBuilder
     emptyParams
-    [makePathed params1, makePathed params2, makePathed params3]
+    [params1, params2, params3]
     []
 
 smDefault =
-  singleSubBuilder basicBuilder params1 [makePathed paramsNoTitle] []
+  singleSubBuilder basicBuilder params1' [paramsNoTitle] []
 
-smDefault2 = singleSubBuilder basicBuilder params2 [makePathed params1] []
+smDefault2 = singleSubBuilder basicBuilder params2' [params1] []
 
-smDefaultNoParams = singleSubBuilder basicBuilder params1 [] []
+smDefaultNoParams = singleSubBuilder basicBuilder params1' [] []
 
 smComplexShow1 =
-  singleSubBuilder basicBuilder params1 [] ["foo", "bar"]
+  singleSubBuilder basicBuilder params1' [] ["foo", "bar"]
 
 smComplexShow2 =
   singleSubBuilder basicBuilder emptyParams [] ["foo", "bar"]
 
 smComplexShow3 =
-  singleSubBuilder basicBuilder params1 [makePathed params2, makePathed params3]
+  singleSubBuilder basicBuilder params1' [params2, params3]
   ["foo", "bar"]
 
 smComplexShow4 =
   singleSubBuilder
     basicBuilder
     emptyParams
-    [makePathed params2, makePathed params3]
+    [params2, params3]
   ["foo", "bar"]
 
 smTwoBuilders1 = 
   subBuilder
-    [ SubBuilderExec basicBuilder emptyParams [makePathed params1] []
-    , SubBuilderExec fileBuilder emptyParams [makePathed params2] []
+    [ SubBuilderExec basicBuilder emptyParams [params1] []
+    , SubBuilderExec fileBuilder emptyParams [params2] []
     ]
 
 smTwoBuilders2 = 
   subBuilder
-    [ SubBuilderExec basicBuilder emptyParams [makePathed params2] []
-    , SubBuilderExec basicBuilder emptyParams [makePathed params1] []
+    [ SubBuilderExec basicBuilder emptyParams [params2] []
+    , SubBuilderExec basicBuilder emptyParams [params1] []
     ]
 
 testSubBuilderFiles =

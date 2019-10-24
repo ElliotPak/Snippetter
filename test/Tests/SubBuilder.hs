@@ -72,77 +72,77 @@ params3 = makePathed params3'
 
 paramsNoTitle = makePathed paramsNoTitle'
 
-smEmpty = singleSubBuilder basicBuilder emptyParams [] []
+smEmpty = singleSubBuilder basicBuilder emptyParams [] [] id
 
-smEmptySameFile = singleSubBuilder sameFileBuilder emptyParams [] []
+smEmptySameFile = singleSubBuilder sameFileBuilder emptyParams [] [] id
 
-smEmptyFile = singleSubBuilder fileBuilder emptyParams [] []
+smEmptyFile = singleSubBuilder fileBuilder emptyParams [] [] id
 
 smSingle =
-  singleSubBuilder basicBuilder emptyParams [params2] []
+  singleSubBuilder basicBuilder emptyParams [params2] [] id
 
 smSingleFile =
-  singleSubBuilder fileBuilder emptyParams [params2] []
+  singleSubBuilder fileBuilder emptyParams [params2] [] id
 
 smSingleSameFile =
-  singleSubBuilder sameFileBuilder emptyParams [params2] []
+  singleSubBuilder sameFileBuilder emptyParams [params2] [] id
 
 smMultiple =
   singleSubBuilder
     basicBuilder
     emptyParams
     [params1, params2, params3]
-    []
+    [] id
 
 smMultipleFile =
   singleSubBuilder
     fileBuilder
     emptyParams
     [params1, params2, params3]
-    []
+    [] id
 
 smMultipleSameFile =
   singleSubBuilder
     sameFileBuilder
     emptyParams
     [params1, params2, params3]
-    []
+    [] id
 
 smDefault =
-  singleSubBuilder basicBuilder params1' [paramsNoTitle] []
+  singleSubBuilder basicBuilder params1' [paramsNoTitle] [] id
 
-smDefault2 = singleSubBuilder basicBuilder params2' [params1] []
+smDefault2 = singleSubBuilder basicBuilder params2' [params1] [] id
 
-smDefaultNoParams = singleSubBuilder basicBuilder params1' [] []
+smDefaultNoParams = singleSubBuilder basicBuilder params1' [] [] id
 
 smComplexShow1 =
-  singleSubBuilder basicBuilder params1' [] ["foo", "bar"]
+  singleSubBuilder basicBuilder params1' [] ["foo", "bar"] id
 
 smComplexShow2 =
-  singleSubBuilder basicBuilder emptyParams [] ["foo", "bar"]
+  singleSubBuilder basicBuilder emptyParams [] ["foo", "bar"] id
 
 smComplexShow3 =
   singleSubBuilder basicBuilder params1' [params2, params3]
-  ["foo", "bar"]
+  ["foo", "bar"] id
 
 smComplexShow4 =
   singleSubBuilder
     basicBuilder
     emptyParams
     [params2, params3]
-  ["foo", "bar"]
+  ["foo", "bar"] id
 
 smTwoBuilders1 = 
   subBuilder
-    [ SubBuilderExec basicBuilder emptyParams [params1] []
-    , SubBuilderExec fileBuilder emptyParams [params2] []
-    ]
+    [ SubBuilderExec basicBuilder emptyParams [params1] [] id
+    , SubBuilderExec fileBuilder emptyParams [params2] [] id
+    ] id
 
 smTwoBuilders2 = 
   subBuilder
-    [ SubBuilderExec basicBuilder emptyParams [params2] []
-    , SubBuilderExec basicBuilder emptyParams [params1] []
-    ]
+    [ SubBuilderExec basicBuilder emptyParams [params2] [] id
+    , SubBuilderExec basicBuilder emptyParams [params1] [] id
+    ] id
 
 testSubBuilderFiles =
   [ testCase "Empty, Builder uses no files" $

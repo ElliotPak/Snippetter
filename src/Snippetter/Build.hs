@@ -29,6 +29,7 @@ module Snippetter.Build
   , doc
   , subBuilder
   , SubBuilderExec (..)
+  , SBListFunc
   , emptyContent
   -- * Actions
   , Action
@@ -149,20 +150,13 @@ paramsFromFile file = do
   let addPath x = PathedParams x $ Just file
   return $ map addPath values
 
--- | Create a @Doc@ by running a @Builder@, using the values of a YAML collection
---   as its parameters.
-builderWithParamsFile ::
-     MonadReadWorld m => NamedBuilder -> FilePath -> DocResult m Content
-builderWithParamsFile builder path = do
-  fromFile <- paramsFromFile path
-  builderWithParams builder fromFile
-
 -- | Create a @Doc@ by running a @Builder@ consecutively, using each entry in the
---   PathedParams list as parameters.
+--   list as parameters.
 builderWithParams ::
-     Monad m => NamedBuilder -> [PathedParams] -> DocResult m Content
-builderWithParams b v = do
-  mapped <- mapM (buildDoc b) v
+     Monad m => [(NamedBuilder, PathedParams)] -> DocResult m Content
+builderWithParams list = do
+  let func (b, v) = buildDoc b v
+  mapped <- mapM func list
   let addFunc a b = a <> b
   let add c = singleContentAction c addFunc "Add: "
   let contentList contents = Doc EmptyContent (map add mapped)
@@ -204,7 +198,7 @@ data Content
   | Snippet FilePath
   | Transform Content (T.Text -> Either T.Text T.Text)
   | Doc Content [Action]
-  | SubBuilder [SubBuilderExec]
+  | SubBuilder [SubBuilderExec] SBListFunc
   | EmptyContent
 
 instance Show Content where
@@ -215,7 +209,7 @@ conNeededFiles :: MonadReadWorld m => Content -> DocResult m FilePathSet
 conNeededFiles (Text _) = return HS.empty
 conNeededFiles (Snippet s) = return $ HS.singleton s
 conNeededFiles (Transform c _) = conNeededFiles c
-conNeededFiles (SubBuilder sme) = mapM smNeededFiles sme <&> HS.unions
+conNeededFiles (SubBuilder sbe f) = sbNeededFiles f sbe
 conNeededFiles (Doc c d) = do
   dNeeded <- actListNeededFiles d
   cNeeded <- conNeededFiles c
@@ -229,11 +223,13 @@ conShow (Snippet s) = "Snippet named \"" <> T.pack s <> "\""
 conShow (Transform c f) = "Transformation of: " <\> indentFour pre
   where
     pre = conShow c
-conShow (SubBuilder sme) =
-  "Builder executions:" <\\> (indentMultiWithListMarker $ map smShow sme)
+conShow (SubBuilder sbe _) =
+  "Builder executions:" <\\> (indentMultiWithListMarker $ map sbeShow sbe)
 conShow (Doc c d) =
-  "Doc containing " <\> indentFour (conShow c) <>
-  "\n  With the following actions applied to it:\n" <> actions
+  case c of
+    EmptyContent -> "The following actions:\n" <> actions
+    _ -> "Doc containing " <\> indentFour (conShow c) <>
+           "\n  With the following actions applied to it:\n" <> actions
   where
     actions = T.intercalate "\n" (map (indentWithListMarker . actShow) d)
 conShow EmptyContent = "Empty content"
@@ -249,8 +245,8 @@ conPreview (Snippet s) = do
 conPreview (Transform c f) = do
   dryRun <- conPreview c
   return $ "Transformation of: " <\> indentFour dryRun
-conPreview (SubBuilder sme) = do
-  previewed <- mapM smPreview sme <&> indentMultiWithListMarker
+conPreview (SubBuilder sbe f) = do
+  previewed <- sbPreview f sbe
   return $ "Builder executions:" <\\> previewed
 conPreview (Doc c d) = do
   cPreviewed <- conPreview c
@@ -269,7 +265,7 @@ conEvaluate (Snippet s) = fileContentsInDoc s
 conEvaluate (Transform c f) = do
   sub <- conEvaluate c
   resultLiftEither $ mapLeft TransformFailed $ f sub
-conEvaluate (SubBuilder sme) = mapM smEvaluate sme <&> T.concat
+conEvaluate (SubBuilder sbe f) = sbEvaluate f sbe
 conEvaluate (Doc c d) = do
   initial <- conEvaluate c
   actListExecute d initial
@@ -285,33 +281,56 @@ actListNeededFiles doc = do
 actListExecute :: MonadReadWorld m => [Action] -> T.Text -> DocResult m T.Text
 actListExecute xs text = foldM (flip actExecute) text xs
 
+type SBList = [(NamedBuilder, PathedParams)]
+
+-- | 'SubBuilderExec's will execute this function to sort/filter/map/reduce
+-- existing parameters.
+type SBListFunc = SBList -> SBList
+
 -- | Specifies the @Builder@ to use in a @SubBuilder@ and what it should execute
 --   on.
 data SubBuilderExec =
   SubBuilderExec
-    { smBuilder :: NamedBuilder -- ^ The 'Builder' to use.
-    , smDefault :: Params -- ^ Default 'Params'. If a 'Params' doesn't have a key from the defaults, the value from those defaults will be used.
-    , smParams :: [PathedParams] -- ^ The 'Params' to operate on.
-    , smFiles :: [FilePath] -- ^ Parameter files to load and also operate on.
+    { sbBuilder :: NamedBuilder -- ^ The 'Builder' to use.
+    , sbDefault :: Params -- ^ Default 'Params'. If a 'Params' doesn't have a key from the defaults, the value from those defaults will be used.
+    , sbParams :: [PathedParams] -- ^ The 'Params' to operate on.
+    , sbFiles :: [FilePath] -- ^ Parameter files to load and also operate on.
+    , sbFunc :: SBListFunc -- ^ Parameter list transformation function
     }
 
 instance Show SubBuilderExec where
-  show s = T.unpack $ smShow s
+  show s = T.unpack $ sbeShow s
 
 -- | Load parameters from all parameter files in a @SubBuilderExec@, without
 --   default parameters applied.
-smFileParams :: MonadReadWorld m => SubBuilderExec -> DocResult m [PathedParams]
-smFileParams sm = do
-  params <- mapM paramsFromFile (smFiles sm)
+sbFileParams :: MonadReadWorld m => SubBuilderExec -> DocResult m [PathedParams]
+sbFileParams sb = do
+  params <- mapM paramsFromFile (sbFiles sb)
   return $ concat params
 
 -- | Load all parameters in a @SubBuilderExec@, with default parameters applied.
-smAllParams :: MonadReadWorld m => SubBuilderExec -> DocResult m [PathedParams]
-smAllParams sm = do
-  fileParams <- smFileParams sm
-  let allParams = smParams sm ++ fileParams
-  let defaulted = map (pathedParamDefault $ smDefault sm) allParams
-  return defaulted
+sbAllParams :: MonadReadWorld m => SubBuilderExec -> DocResult m [PathedParams]
+sbAllParams sb = do
+  fileParams <- sbFileParams sb
+  let allParams = sbParams sb ++ fileParams
+  return $ map (pathedParamDefault $ sbDefault sb) allParams
+
+sbExecFilteredList ::
+     MonadReadWorld m => SubBuilderExec -> DocResult m SBList
+sbExecFilteredList exec = do
+  params <- sbAllParams exec
+  let zipped = zip (repeat $ sbBuilder exec) params
+  return $ (sbFunc exec) zipped
+
+sbFilteredList ::
+     MonadReadWorld m => SBListFunc -> [SubBuilderExec] -> DocResult m SBList
+sbFilteredList f execs = do
+  list <- concat <$> mapM sbExecFilteredList execs
+  return $ f list
+
+sbFilteredParams ::
+     MonadReadWorld m => SBListFunc -> [SubBuilderExec] -> DocResult m [PathedParams]
+sbFilteredParams f execs = snd <$> unzip <$> sbFilteredList f execs
 
 -- | Add fields present in the first @Params@ to the @PathedParams@ if they're
 --   missing from the second.
@@ -320,12 +339,13 @@ pathedParamDefault def (PathedParams params ppath) =
   PathedParams (paramUnion params def) ppath
 
 -- | Determine files needed by a @SubBuilderExec@.
-smNeededFiles :: MonadReadWorld m => SubBuilderExec -> DocResult m FilePathSet
-smNeededFiles sm = do
-  params <- smAllParams sm
-  entries <- builderWithParams (smBuilder sm) params
+sbNeededFiles :: MonadReadWorld m => SBListFunc -> [SubBuilderExec] -> DocResult m FilePathSet
+sbNeededFiles f execs = do
+  list <- sbFilteredList f execs
+  entries <- builderWithParams list
   containing <- conNeededFiles entries
-  return $ (HS.fromList $ smFiles sm) <> containing
+  let paramFiles = HS.fromList $ concat $ map sbFiles execs
+  return $ paramFiles <> containing
 
 -- | Get a textual representation of a @Params@.
 showParams :: Params -> T.Text
@@ -338,8 +358,8 @@ showPathedParams :: PathedParams -> T.Text
 showPathedParams (PathedParams params _) = showParams params
 
 -- | Show a @SubBuilderExec@ (see @conShow@).
-smShow :: SubBuilderExec -> T.Text
-smShow (SubBuilderExec m def pp f) = tDefaults <\\> tParams <\\> tFile
+sbeShow :: SubBuilderExec -> T.Text
+sbeShow (SubBuilderExec m def pp files _) = tDefaults <\\> tParams <\\> tFile
   where
     tDefaults
       | nullParams def = ""
@@ -350,30 +370,32 @@ smShow (SubBuilderExec m def pp f) = tDefaults <\\> tParams <\\> tFile
         ("Execution with these params:\n" :: T.Text) <>
         T.intercalate "\n" (map showPathedParams pp)
     tFile
-      | null f = ""
+      | null files = ""
       | otherwise =
         ("Execution on these files:\n" :: T.Text) <>
         T.intercalate
           "\n"
-          (map (indentWithListMarker . T.pack) f)
+          (map (indentWithListMarker . T.pack) files)
 
 -- | Preview a @SubBuilderExec@ with file reading (see @conPreview@).
-smPreview :: MonadReadWorld m => SubBuilderExec -> DocResult m T.Text
-smPreview sm = do
-  allParams <- smAllParams sm
-  case allParams of
+sbPreview :: MonadReadWorld m => SBListFunc -> [SubBuilderExec] -> DocResult m T.Text
+sbPreview f execs = do
+  list <- sbFilteredList f execs
+  case list of 
     [] -> return ""
-    _ ->
+    _ -> do
+      con <- builderWithParams list
+      preview <- conPreview con
       return $
-      ("Execution with these params:\n" :: T.Text) <>
-      T.unlines (map showPathedParams allParams)
+        ("Execution with these params:\n" :: T.Text) <>
+        indentFour preview
 
 -- | Evaluate a @SubBuilderExec@. This is done by running the builder on all
 --   specified parameters, and on all parameters in the specified files.
-smEvaluate :: MonadReadWorld m => SubBuilderExec -> DocResult m T.Text
-smEvaluate sme = do
-  params <- smAllParams sme
-  con <- builderWithParams (smBuilder sme) params
+sbEvaluate :: MonadReadWorld m => SBListFunc -> [SubBuilderExec] -> DocResult m T.Text
+sbEvaluate f execs = do
+  list <- sbFilteredList f execs
+  con <- builderWithParams list
   conEvaluate con
 
 -- | Represents operations that transform text in some way.

@@ -110,16 +110,15 @@ replaceText t1 t2 = replace t1 $ text t2
 
 -- | Shorthand for creating a @SubBuilder@ with just one @SubBuilderExec@.
 singleSubBuilder ::
-     NamedBuilder -> Params -> [PathedParams] -> [FilePath] -> Content
-singleSubBuilder m p pp fp = subBuilder $ [SubBuilderExec m p pp fp]
+     NamedBuilder -> Params -> [PathedParams] -> [FilePath] -> SBListFunc -> Content
+singleSubBuilder m p pp fp func = subBuilder [SubBuilderExec m p pp fp func] id
 
 -- | Shorthand for creating a @SubBuilder@ that executes the builder on one file.
 subBuilderOnFile :: NamedBuilder -> FilePath -> Content
 subBuilderOnFile m f =
-  subBuilder $ [SubBuilderExec m emptyParams [] [f]]
+  subBuilder [SubBuilderExec m emptyParams [] [f] id] id
 
 subBuildersOnFiles :: [(NamedBuilder, [FilePath])] -> Content
-subBuildersOnFiles mf = subBuilder $ map foo mf
+subBuildersOnFiles mf = subBuilder (map foo mf) id
   where
-    foo (nb, paths) = SubBuilderExec nb emptyParams [] paths
-
+    foo (nb, paths) = SubBuilderExec nb emptyParams [] paths id

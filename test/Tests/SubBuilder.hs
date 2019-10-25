@@ -144,6 +144,15 @@ smTwoBuilders2 =
     , SubBuilderExec basicBuilder emptyParams [params1] [] id
     ] id
 
+smFunc' aa bb = 
+  subBuilder
+    [ SubBuilderExec basicBuilder emptyParams [params1, params2, params3] [] aa
+    ] bb
+
+smFunc1 = smFunc' (\a -> return $ head a) id
+
+smFunc2 = smFunc' (tail) id
+
 testSubBuilderFiles =
   [ testCase "Empty, Builder uses no files" $
     passIO (conNeededFiles smEmpty) HS.empty
@@ -234,4 +243,8 @@ testSubBuilderEvaluate =
     passMockFiles files (conEvaluate smTwoBuilders1) (T.pack "foo- title: from-file")
   , testCase "Two builders (that are the same)" $
     passMockFiles files (conEvaluate smTwoBuilders2) (T.pack "barfoo")
+  , testCase "ListFunc - head" $
+    passMockFiles files (conEvaluate smFunc1) (T.pack "foo")
+  , testCase "ListFunc - tail" $
+    passMockFiles files (conEvaluate smFunc2) (T.pack "barbaz")
   ]

@@ -149,9 +149,24 @@ smFunc' aa bb =
     [ SubBuilderExec basicBuilder emptyParams [params1, params2, params3] [] aa
     ] bb
 
+smFunc'' aa bb = 
+  subBuilder
+    [ SubBuilderExec fileBuilder emptyParams [params1, params2, params3] [] aa
+    ] bb
+
+smFunc''' aa bb cc = 
+  subBuilder
+    [ SubBuilderExec fileBuilder emptyParams [params1, params2, params3] [] aa
+    , SubBuilderExec basicBuilder emptyParams [params1, params2, params3] [] bb
+    ] cc
+
 smFunc1 = smFunc' (\a -> return $ head a) id
 
 smFunc2 = smFunc' (tail) id
+
+smFunc3 = smFunc'' (\a -> return $ head a) id
+
+smFunc4 = smFunc'' (tail) id
 
 testSubBuilderFiles =
   [ testCase "Empty, Builder uses no files" $
@@ -172,6 +187,10 @@ testSubBuilderFiles =
     passIO (conNeededFiles smMultipleSameFile) $ HS.fromList ["foo"]
   , testCase "Multiple params, macro uses file specified in params" $
     passIO (conNeededFiles smMultipleFile) $ HS.fromList ["foo", "bar", "baz"]
+  , testCase "ListFunc 1 - head" $
+    passIO (conNeededFiles smFunc3) $ HS.fromList ["foo"]
+  , testCase "ListFunc 1 - tail" $
+    passIO (conNeededFiles smFunc4) $ HS.fromList ["bar", "baz"]
   ]
 
 testSubBuilderShow =
@@ -197,35 +216,35 @@ testSubBuilderShow =
   ]
 
 testSubBuilderPreview =
-  [ testCase "No params" $ passIO (conPreview smEmpty) "Builder executions:"
+  [ testCase "No params" $ passIO (conPreview smEmpty) "Empty sub-builder execution"
   , testCase "Single params" $
     passIO
       (conPreview smSingle)
-      "Builder executions:\n  - Execution with these params:\n      - title: bar"
+      "The following actions:\n  - Add: \"bar\""
   , testCase "Multiple params" $
     passIO
       (conPreview smMultiple)
-      "Builder executions:\n  - Execution with these params:\n      - title: foo\n      - title: bar\n      - title: baz"
+      "The following actions:\n  - Add: \"foo\"\n  - Add: \"bar\"\n  - Add: \"baz\""
   , testCase "Complex preview 1" $
     passMockFiles
       files
       (conPreview smComplexShow1)
-      "Builder executions:\n  - Execution with these params:\n      - title: from-file\n      - title: from-file"
+      "The following actions:\n  - Add: \"from-file\"\n  - Add: \"from-file\""
   , testCase "Complex preview 2" $
     passMockFiles
       files
       (conPreview smComplexShow2)
-      "Builder executions:\n  - Execution with these params:\n      - title: from-file\n      - title: from-file"
+      "The following actions:\n  - Add: \"from-file\"\n  - Add: \"from-file\""
   , testCase "Complex preview 3" $
     passMockFiles
       files
       (conPreview smComplexShow3)
-      "Builder executions:\n  - Execution with these params:\n      - title: bar\n      - title: baz\n      - title: from-file\n      - title: from-file"
+      "The following actions:\n  - Add: \"bar\"\n  - Add: \"baz\"\n  - Add: \"from-file\"\n  - Add: \"from-file\""
   , testCase "Complex preview 4" $
     passMockFiles
       files
       (conPreview smComplexShow4)
-      "Builder executions:\n  - Execution with these params:\n      - title: bar\n      - title: baz\n      - title: from-file\n      - title: from-file"
+      "The following actions:\n  - Add: \"bar\"\n  - Add: \"baz\"\n  - Add: \"from-file\"\n  - Add: \"from-file\""
   ]
 
 testSubBuilderEvaluate =
@@ -243,8 +262,12 @@ testSubBuilderEvaluate =
     passMockFiles files (conEvaluate smTwoBuilders1) (T.pack "foo- title: from-file")
   , testCase "Two builders (that are the same)" $
     passMockFiles files (conEvaluate smTwoBuilders2) (T.pack "barfoo")
-  , testCase "ListFunc - head" $
+  , testCase "ListFunc 1 - head" $
     passMockFiles files (conEvaluate smFunc1) (T.pack "foo")
-  , testCase "ListFunc - tail" $
+  , testCase "ListFunc 1 - tail" $
     passMockFiles files (conEvaluate smFunc2) (T.pack "barbaz")
+  , testCase "ListFunc 2 - head" $
+    passMockFiles files (conEvaluate smFunc3) (T.pack "- title: from-file")
+  , testCase "ListFunc 2 - tail" $
+    passMockFiles files (conEvaluate smFunc4) (T.pack "- title: from-file- title: from-file")
   ]

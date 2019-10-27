@@ -29,6 +29,7 @@ module Snippetter.Build
   , doc
   , subBuilder
   , SubBuilderExec (..)
+  , SBList
   , SBListFunc
   , emptyContent
   -- * Actions
@@ -246,16 +247,19 @@ conPreview (Transform c f) = do
   dryRun <- conPreview c
   return $ "Transformation of: " <\> indentFour dryRun
 conPreview (SubBuilder sbe f) = do
-  previewed <- sbPreview f sbe
-  return $ "Builder executions:" <\\> previewed
+  result <- sbPreview f sbe
+  return $ if T.null result
+    then "Empty sub-builder execution"
+    else result
+
 conPreview (Doc c d) = do
   cPreviewed <- conPreview c
   dPreviewed <- mapM actPreview d
-  return $
-    "Doc containing: \n" <>
-    indentFour cPreviewed <>
-    "\n  With the following actions applied to it:\n" <>
-    T.intercalate "\n" (map indentWithListMarker dPreviewed)
+  let actions = T.intercalate "\n" (map indentWithListMarker dPreviewed)
+  return $ case c of
+    EmptyContent -> "The following actions:\n" <> actions
+    _ -> "Doc containing " <\> indentFour cPreviewed <>
+           "\n  With the following actions applied to it:\n" <> actions
 conPreview EmptyContent = return "Empty content"
 
 -- | Convert a @Content@ to text.
@@ -385,10 +389,7 @@ sbPreview f execs = do
     [] -> return ""
     _ -> do
       con <- builderWithParams list
-      preview <- conPreview con
-      return $
-        ("Execution with these params:\n" :: T.Text) <>
-        indentFour preview
+      conPreview con
 
 -- | Evaluate a @SubBuilderExec@. This is done by running the builder on all
 --   specified parameters, and on all parameters in the specified files.

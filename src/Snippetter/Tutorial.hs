@@ -103,11 +103,15 @@ import Data.Text (Text)
       'Content'.
     * 'emptyContent' creates a 'Content' that evaluates to nothing.
     
-    There are more functions that create 'Content' available in "Snippetter.Helpers".
+    There are more functions that create 'Content' available in
+    "Snippetter.Helpers".
 
     The files specified in a 'SubBuilderExec' must be YAML files and contain a
     list of objects. The 'SubBuilderExec' will execute on each provided
-    'Params', and then each entry in the list from each loaded file.
+    'Params', and then each entry in the list from each loaded file. You can
+    also specify a function that transforms the list in some way, such as
+    sorting or filtering, by providing a 'SBListFunc'. Functions that can help
+    with this can be found in "Snippetter.Helpers".
 
     'doc' requires you to specify 'Action's, and the built in ones (from
     "Snippetter.Helpers") are as follows:

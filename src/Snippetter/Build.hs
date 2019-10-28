@@ -22,15 +22,16 @@ module Snippetter.Build
   , conShow
   , conPreview
   , conEvaluate
+  , SubBuilderExec (..)
+  , SBEntry
+  , SBList
+  , SBListFunc
   -- ** Content types
   , text
   , snippet
   , transform
   , doc
   , subBuilder
-  , SubBuilderExec (..)
-  , SBList
-  , SBListFunc
   , emptyContent
   -- * Actions
   , Action
@@ -285,7 +286,9 @@ actListNeededFiles doc = do
 actListExecute :: MonadReadWorld m => [Action] -> T.Text -> DocResult m T.Text
 actListExecute xs text = foldM (flip actExecute) text xs
 
-type SBList = [(NamedBuilder, PathedParams)]
+type SBEntry = (NamedBuilder, PathedParams)
+
+type SBList = [SBEntry]
 
 -- | 'SubBuilderExec's will execute this function to sort/filter/map/reduce
 -- existing parameters.

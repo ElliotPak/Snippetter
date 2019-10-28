@@ -18,9 +18,15 @@ module Snippetter.Helpers
   , replaceText
   , singleSubBuilder
   , subBuilderOnFile
+  -- * Helpers for 'SBListFunc's
+  , paramsFromPair
+  , pfp
+  , hasParam
+  , orderByParam
+  , mapParam
   ) where
 
-import Data.Yaml (Object, Value(Object, String))
+import Data.Yaml (Object, Value(Object, String, Number, Bool))
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
 import Data.Hashable
@@ -122,3 +128,29 @@ subBuildersOnFiles :: [(NamedBuilder, [FilePath])] -> Content
 subBuildersOnFiles mf = subBuilder (map foo mf) id
   where
     foo (nb, paths) = SubBuilderExec nb emptyParams [] paths id
+
+-- | Get the 'Params' from a 'SBList' entry.
+paramsFromPair :: (NamedBuilder, PathedParams) -> Params
+paramsFromPair (_, pp) = params pp
+
+-- | Get the 'Params' from a 'SBList' entry (shorthand).
+pfp = paramsFromPair
+
+-- | Is true if the given 'SBEntry' has a value for the given key.
+hasParam :: T.Text -> SBEntry -> Bool
+hasParam t a = HM.member t $ pfp a
+
+-- | Given two 'SBEntry's and a key, order the two by the key.
+orderByParam :: T.Text -> SBEntry -> SBEntry -> Ordering
+orderByParam t a1 a2 = unwrap (HM.lookup t $ pfp a1) (HM.lookup t $ pfp a2)
+  where
+    unwrap (Just r1) (Just r2) = oo r1 r2
+    unwrap _ _ = EQ
+    oo (String o1) (String o2) = compare o1 o2
+    oo (Number o1) (Number o2) = compare o1 o2
+    oo (Bool o1) (Bool o2) = compare o1 o2
+    oo _ _ = EQ
+
+-- | Map the Params part of the given 'SBEntry'.
+mapParam :: (Params -> Params) -> SBEntry -> SBEntry
+mapParam func (b, (PathedParams p fp)) = (b, PathedParams (func p) fp)

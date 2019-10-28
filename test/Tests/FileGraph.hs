@@ -18,7 +18,7 @@ import Snippetter.Layout
 import Snippetter.Utilities
 import Test.Tasty
 import Test.Tasty.HUnit
-import Tests.Helpers
+import TestAssist
 
 tests =
   [ testGroup "SCC" testCheckSCC

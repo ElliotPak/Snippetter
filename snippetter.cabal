@@ -65,9 +65,10 @@ test-suite test-snippetter
                   yaml >=0.11 && <0.12,
                   bytestring >=0.10 && <0.11,
                   time >= 1.8.0.2 && <1.9
-  other-modules:  Tests.Helpers,
-                  Tests.Actions,
-                  Tests.Content,
+  other-modules:  TestAssist,
+                  Tests.Helpers,
+                  Tests.Build,
+                  Tests.Layout,
                   Tests.Utilities,
                   Tests.SubBuilder,
                   Tests.FileGraph

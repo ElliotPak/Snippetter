@@ -15,7 +15,7 @@ import Snippetter.Helpers
 import Snippetter.Utilities
 import Test.Tasty
 import Test.Tasty.HUnit
-import Tests.Helpers
+import TestAssist
 
 files =
   [ ("foo", ("- title: from-file", startTime))

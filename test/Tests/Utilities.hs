@@ -8,7 +8,7 @@ import qualified Data.Text as T
 import Snippetter.Utilities
 import Test.Tasty
 import Test.Tasty.HUnit
-import Tests.Helpers
+import TestAssist
 
 tests =
   [ testGroup "indentText" testIndentText

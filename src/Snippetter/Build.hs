@@ -7,8 +7,8 @@ module Snippetter.Build
     DocError (..)
   , BuilderError(..)
   , DocResult
-  , BuilderResult
-  , Builder
+  , PageResult
+  , PageBuilder
   , NamedBuilder(..)
   , PathedParams(..)
   , emptyPathedParams
@@ -85,15 +85,14 @@ instance Show DocError where
 -- | The result of a function that builds a page.
 type DocResult m a = Result DocError m a
 
--- | The result of a @Builder@ function.
-type BuilderResult = Either BuilderError Content
+-- | The result of a 'PageBuilder' function.
+type PageResult = Either BuilderError Content
 
--- | Shorthand for a @Builder@'s type signature.
-type Builder = Params -> BuilderResult
+-- | Shorthand for a 'PageBuilder' type signature.
+type PageBuilder = Params -> PageResult
 
--- | A @Builder@ with an optional name.
-data NamedBuilder
-  = NamedBuilder T.Text Builder
+-- | A 'PageBuilder' or 'MetaBuilder'.
+data NamedBuilder = NamedBuilder T.Text PageBuilder
 
 instance Eq NamedBuilder where
   (NamedBuilder t1 _) == (NamedBuilder t2 _) = t1 == t2
@@ -101,8 +100,8 @@ instance Eq NamedBuilder where
 instance Show NamedBuilder where
   show (NamedBuilder t _) = "a builder named " <> T.unpack t
 
--- | Extract the @Builder@ from a @NamedBuilder@.
-extractBuilder :: NamedBuilder -> Builder
+-- | Extract the 'PageBuilder' from a @NamedBuilder@.
+extractBuilder :: NamedBuilder -> PageBuilder
 extractBuilder (NamedBuilder _ b) = b
 
 -- | A @Params@ value that may have a file path associated with it.
@@ -152,7 +151,7 @@ paramsFromFile file = do
   let addPath x = PathedParams x $ Just file
   return $ map addPath values
 
--- | Create a @Doc@ by running a @Builder@ consecutively, using each entry in the
+-- | Create a @Doc@ by running a 'PageBuilder' consecutively, using each entry in the
 --   list as parameters.
 builderWithParams ::
      Monad m => [(NamedBuilder, PathedParams)] -> DocResult m Content
@@ -164,7 +163,7 @@ builderWithParams list = do
   let contentList contents = Doc EmptyContent (map add mapped)
   return $ contentList mapped
 
--- | Build a @Doc@ by running a @Builder@ with the given parameters.
+-- | Build a @Doc@ by running a 'PageBuilder' with the given parameters.
 buildDoc :: Monad m => NamedBuilder -> PathedParams -> DocResult m Content
 buildDoc nb (PathedParams params path) =
   mapResultError (resultLiftEither $ b params) $ convertBuilderError path
@@ -172,12 +171,12 @@ buildDoc nb (PathedParams params path) =
     b = extractBuilder nb
     convertBuilderError path err = DocBuilderError err nb path
 
--- | Evaluates the given @Builder@ to text with the given parameters.
+-- | Evaluates the given 'PageBuilder' to text with the given parameters.
 executeBuilder ::
      MonadReadWorld m => NamedBuilder -> PathedParams -> DocResult m T.Text
 executeBuilder b pp = buildDoc b pp >>= conEvaluate
 
--- | Determines files needed to run the @Builder@ with the given parameters.
+-- | Determines files needed to run the 'PageBuilder' with the given parameters.
 filesForBuilder ::
      MonadReadWorld m => NamedBuilder -> PathedParams -> DocResult m FilePathSet
 filesForBuilder b pp = buildDoc b pp >>= conNeededFiles
@@ -294,7 +293,7 @@ type SBList = [SBEntry]
 -- existing parameters.
 type SBListFunc = SBList -> SBList
 
--- | Specifies the @Builder@ to use in a @SubBuilder@ and what it should execute
+-- | Specifies the 'PageBuilder' to use in a @SubBuilder@ and what it should execute
 --   on.
 data SubBuilderExec =
   SubBuilderExec
@@ -466,7 +465,7 @@ transform = Transform
 -- | Creates a @Content@ that applies successive @Action@s to a @Content@.
 doc = Doc
 
--- | Creates a @Content@ that executes other @Builder@s with various parameters.
+-- | Creates a @Content@ that executes other 'PageBuilder's with various parameters.
 subBuilder = SubBuilder
 
 -- | Creates a @Content@ that evaluates to nothing.

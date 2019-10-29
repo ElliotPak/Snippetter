@@ -8,8 +8,8 @@ module Snippetter.Layout
   , LayoutResult
   , BuilderMap
   , emptyBuilderMap
-  , insertNamedBuilder
-  , insertNamedBuilders
+  , insertPageBuilder
+  , insertPageBuilders
   -- * Site Actions
   , SiteAction (..)
   , PathedSiteAction (..)
@@ -75,13 +75,13 @@ type LayoutResult m a = Result LayoutError m a
 type BuilderMap = HM.HashMap T.Text NamedBuilder
 
 -- | Insert a @Builder@ into a @BuilderMap@ as a @NamedBuilder@.
-insertNamedBuilder :: T.Text -> Builder -> BuilderMap -> BuilderMap
-insertNamedBuilder name builder = HM.insert name (NamedBuilder name builder)
+insertPageBuilder :: T.Text -> PageBuilder -> BuilderMap -> BuilderMap
+insertPageBuilder name builder = HM.insert name (NamedBuilder name builder)
 
 -- | Insert @Builder@s into a @BuilderMap@ as @NamedBuilder@s.
-insertNamedBuilders :: [(T.Text, Builder)] -> BuilderMap -> BuilderMap
-insertNamedBuilders bindings bmap =
-  foldr (uncurry insertNamedBuilder) bmap bindings
+insertPageBuilders :: [(T.Text, PageBuilder)] -> BuilderMap -> BuilderMap
+insertPageBuilders bindings bmap =
+  foldr (uncurry insertPageBuilder) bmap bindings
 
 -- | Creates an empty @BuilderMap@.
 emptyBuilderMap :: BuilderMap
@@ -302,8 +302,8 @@ previewLayout = actOnLayoutFiles previewActions
 
 -- | Converts a @PathedLayout@ to a @SiteAction@, when given a mapping of
 --   strings to builders.
-layoutToAction :: BuilderMap -> PathedLayout -> Either LayoutError PathedSiteAction
-layoutToAction map (PathedLayout layout input) = do
+layoutToActions :: BuilderMap -> PathedLayout -> Either LayoutError PathedSiteAction
+layoutToActions map (PathedLayout layout input) = do
     sa <- ll input layout
     return $ PathedSiteAction sa input
   where
@@ -326,7 +326,7 @@ loadLayoutFile ::
      MonadReadWorld m => BuilderMap -> FilePath -> LayoutResult m [PathedSiteAction]
 loadLayoutFile map path = do
   layout <- loadLayoutFileRaw path
-  resultLiftEither $ mapM (layoutToAction map) layout
+  resultLiftEither $ mapM (layoutToActions map) layout
 
 -- | Loads a list of @SiteAction@ from multiple layout files.
 loadLayoutFiles ::

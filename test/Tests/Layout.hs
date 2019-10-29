@@ -24,10 +24,10 @@ files =
   , ("baz", "- title: from-file")
   ]
 
-sameFileBuilder :: Builder
+sameFileBuilder :: PageBuilder
 sameFileBuilder params = return $ snippet "foo"
 
-noFileBuilder :: Builder
+noFileBuilder :: PageBuilder
 noFileBuilder params = return $ text "foo"
 
 sameFileBuild =
@@ -73,4 +73,4 @@ testMoveFiles = passIO (saNeededFiles (Move "bar" "foo")) (HS.singleton "bar")
 
 testDeleteFiles = passIO (saNeededFiles (Delete "bar")) (HS.singleton "bar")
 
-testRunFiles = passIO (saNeededFiles (Run "bar" [] "")) HS.empty
+testRunFiles = passIO (saNeededFiles (Run ["bar"] "")) HS.empty

@@ -54,6 +54,7 @@ data FileError
   | NoReadPermission FilePath
   | NoWritePermission FilePath
   | ProcessFailure Int T.Text T.Text
+  | EmptyProcess
   | OtherFileError FilePath IOError
   deriving (Eq)
 
@@ -72,6 +73,7 @@ instance Show FileError where
     ".\nStandard output:\n" <>
     T.unpack (indentFour stdout) <>
     "\nStandard error:\n" <> T.unpack (indentFour stderr)
+  show EmptyProcess = "Attempted to execute a process consisting of nothing."
   show (OtherFileError f e) =
     "The following error occurred in \"" <>
     file <> "\":" <> show (ioeGetErrorType e)
@@ -134,9 +136,12 @@ class MonadReadWorld m =>
 
 -- | Pack @runProcess@ into a FileResult.
 packRunProcess ::
-     MonadWriteWorld m => T.Text -> [T.Text] -> T.Text -> FileResult m ()
-packRunProcess process args stdin = do
-  (x, y, z) <- resultLift $ runProcess process args stdin
+     MonadWriteWorld m => [T.Text] -> T.Text -> FileResult m ()
+packRunProcess [] stdin = resultE EmptyProcess
+packRunProcess process stdin = do
+  let p = head process
+  let args = tail process
+  (x, y, z) <- resultLift $ runProcess p args stdin
   case x of
     ExitSuccess -> return ()
     ExitFailure ii -> resultE $ ProcessFailure ii y z

@@ -88,8 +88,15 @@ type DocResult m a = Result DocError m a
 -- | The result of a 'PageBuilder' function.
 type PageResult = Either BuilderError Content
 
--- | Shorthand for a 'PageBuilder' type signature.
+type InOutResult = Either BuilderError ([FilePath], [FilePath])
+
+-- | A 'PageBuilder' function takes in a JSON object and outputs either an
+-- error or the contents of a document.
 type PageBuilder = Params -> PageResult
+
+-- | An 'InOutBuilder' function takes in a JSON object and outputs a list of
+-- input/output files.
+type InOutBuilder = Params -> InOutResult
 
 -- | A 'PageBuilder' or 'MetaBuilder'.
 data NamedBuilder = NamedBuilder T.Text PageBuilder

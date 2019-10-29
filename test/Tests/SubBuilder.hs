@@ -32,19 +32,19 @@ tests =
 
 basicBuilder = NamedBuilder "basic" basicBuilder'
 
-basicBuilder' :: Builder
+basicBuilder' :: PageBuilder
 basicBuilder' params = do
   temp <- lookupText "title" params
   return $ text temp
 
 sameFileBuilder = NamedBuilder "same" sameFileBuilder'
 
-sameFileBuilder' :: Builder
+sameFileBuilder' :: PageBuilder
 sameFileBuilder' params = return $ snippet "foo"
 
 fileBuilder = NamedBuilder "file" fileBuilder'
 
-fileBuilder' :: Builder
+fileBuilder' :: PageBuilder
 fileBuilder' params = do
   temp <- lookupText "title" params
   return $ snippet $ T.unpack temp

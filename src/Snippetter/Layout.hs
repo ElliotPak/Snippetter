@@ -125,7 +125,7 @@ data SiteAction
   | Copy FilePath FilePath
   | Move FilePath FilePath
   | Delete FilePath
-  | Run T.Text [T.Text] T.Text
+  | Run [T.Text] T.Text
   deriving (Show, Eq)
 
 instance Hashable SiteAction where
@@ -137,7 +137,7 @@ instance Hashable SiteAction where
         (2 :: Int) `hashWithSalt` from `hashWithSalt` to
     hashWithSalt salt (Delete file) = salt `hashWithSalt` 
         (3 :: Int) `hashWithSalt` file
-    hashWithSalt salt (Run process _ _) = salt `hashWithSalt` 
+    hashWithSalt salt (Run process _) = salt `hashWithSalt` 
         (4 :: Int) `hashWithSalt` process
 
 -- | A 'SiteAction' that may have a file path associated with it, which
@@ -196,8 +196,8 @@ executeSiteAction' (Move from to) =
   moveFile from to `mapResultError` LayoutFileError
 executeSiteAction' (Delete file) =
   deleteFile file `mapResultError` LayoutFileError
-executeSiteAction' (Run process args stdin) =
-  packRunProcess process args stdin `mapResultError` LayoutFileError
+executeSiteAction' (Run process stdin) =
+  packRunProcess process stdin `mapResultError` LayoutFileError
 
 -- | Get the tense to be used in status messages for each @SiteAction@.
 siteActionDesc :: SiteAction -> T.Text
@@ -207,8 +207,8 @@ siteActionDesc (Copy from to) =
 siteActionDesc (Move from to) =
   "Moving \"" <> T.pack from <> "\" to \"" <> T.pack to <> "\""
 siteActionDesc (Delete file) = "Deleting \"" <> T.pack file <> "\""
-siteActionDesc (Run process args _) =
-  "Running \"" <> process <> " " <> T.intercalate " " args <> "\""
+siteActionDesc (Run process _) =
+  "Running \"" <> T.intercalate " " process <> "\""
 
 -- | Show the user the dependencies of these 'SiteAction's.
 showActionsDeps :: MonadWriteWorld m => [PathedSiteAction] -> m ()
@@ -302,31 +302,32 @@ previewLayout = actOnLayoutFiles previewActions
 
 -- | Converts a @PathedLayout@ to a @SiteAction@, when given a mapping of
 --   strings to builders.
-layoutToActions :: BuilderMap -> PathedLayout -> Either LayoutError PathedSiteAction
-layoutToActions map (PathedLayout layout input) = do
+layoutToActions ::
+     MonadReadWorld m => BuilderMap -> PathedLayout -> LayoutResult m [PathedSiteAction]
+layoutToActions bmap (PathedLayout layout input) = do
     sa <- ll input layout
-    return $ PathedSiteAction sa input
+    return $ map (`PathedSiteAction` input) sa
   where
     ll path (LayoutBuild output builderName contents) = do
       let mp = PathedParams contents input
       let err = MissingBuilder builderName
-      builder <- lookupEither err builderName map
-      return $ Build builder mp output
-    ll path (LayoutCopy from to) = return $ Copy from to
-    ll path (LayoutMove from to) = return $ Move from to
-    ll path (LayoutDelete file) = return $ Delete file
-    ll path (LayoutRunProcess process stdin) = return $ Run pHead pTail stdin
+      let builder = lookupEither err builderName bmap
+      case builder of
+        Right r -> return [Build r mp output]
+        Left l -> resultE l
+    ll path (LayoutCopy from to) = return [Copy from to]
+    ll path (LayoutMove from to) = return [Move from to]
+    ll path (LayoutDelete file) = return [Delete file]
+    ll path (LayoutRunProcess process stdin) = return [Run split stdin]
       where
         split = T.splitOn " " process
-        pHead = head split
-        pTail = tail split
 
 -- | Loads a list of @SiteAction@ from a layout file.
 loadLayoutFile ::
      MonadReadWorld m => BuilderMap -> FilePath -> LayoutResult m [PathedSiteAction]
 loadLayoutFile map path = do
   layout <- loadLayoutFileRaw path
-  resultLiftEither $ mapM (layoutToActions map) layout
+  concat <$> mapM (layoutToActions map) layout
 
 -- | Loads a list of @SiteAction@ from multiple layout files.
 loadLayoutFiles ::
@@ -342,7 +343,7 @@ saNeededFiles (Build m pp f) =
 saNeededFiles (Copy from to) = return $ HS.singleton from
 saNeededFiles (Move from to) = return $ HS.singleton from
 saNeededFiles (Delete file) = return $ HS.singleton file
-saNeededFiles (Run process args stdin) = return HS.empty
+saNeededFiles (Run process stdin) = return HS.empty
 
 -- | Determine files needed to execute a 'PathedSiteAction'.
 psaNeededFiles :: MonadReadWorld m => PathedSiteAction -> LayoutResult m FilePathSet
@@ -359,7 +360,7 @@ saOutputFile (Build m pp f) = Just f
 saOutputFile (Copy from to) = Just to
 saOutputFile (Move from to) = Just to
 saOutputFile (Delete file) = Nothing
-saOutputFile (Run process args stdin) = Nothing
+saOutputFile (Run process stdin) = Nothing
 
 -- | Determine files needed to execute a 'PathedSiteAction'.
 psaOutputFile :: PathedSiteAction -> Maybe FilePath
@@ -371,7 +372,7 @@ saShow (Build m pp f) = showBuilder m pp `mapResultError` LayoutDocError
 saShow (Copy from to) = return $ "Copy \"" <> T.pack from <> "\" to \"" <> T.pack to <> "\""
 saShow (Move from to) = return $ "Move \"" <> T.pack from <> "\" to \"" <> T.pack to <> "\""
 saShow (Delete file) = return $ "Delete \"" <> T.pack file <> "\""
-saShow (Run process args stdin) = return $ "Run \"" <> process <> " " <> T.intercalate " " args <> "\""
+saShow (Run process stdin) = return $ "Run \"" <> T.intercalate " " process <> "\""
 
 saPreview :: MonadReadWorld m => SiteAction -> LayoutResult m T.Text
 saPreview (Build m pp f) =

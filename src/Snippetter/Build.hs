@@ -9,7 +9,7 @@ module Snippetter.Build
   , DocResult
   , PageResult
   , PageBuilder
-  , NamedBuilder(..)
+  , NamedPageBuilder(..)
   , PathedParams(..)
   , emptyPathedParams
   , executeBuilder
@@ -60,7 +60,7 @@ import System.Directory (doesFileExist)
 
 -- | Possible errors when a page is being built.
 data DocError
-  = DocBuilderError BuilderError NamedBuilder (Maybe FilePath)
+  = DocBuilderError BuilderError NamedPageBuilder (Maybe FilePath)
   | DocFileError FileError
   | DocYamlError YamlError
   | TransformFailed T.Text
@@ -88,28 +88,22 @@ type DocResult m a = Result DocError m a
 -- | The result of a 'PageBuilder' function.
 type PageResult = Either BuilderError Content
 
-type InOutResult = Either BuilderError ([FilePath], [FilePath])
-
 -- | A 'PageBuilder' function takes in a JSON object and outputs either an
 -- error or the contents of a document.
 type PageBuilder = Params -> PageResult
 
--- | An 'InOutBuilder' function takes in a JSON object and outputs a list of
--- input/output files.
-type InOutBuilder = Params -> InOutResult
+-- | A 'PageBuilder' that has a name associated with it.
+data NamedPageBuilder = NamedPageBuilder T.Text PageBuilder
 
--- | A 'PageBuilder' or 'MetaBuilder'.
-data NamedBuilder = NamedBuilder T.Text PageBuilder
+instance Eq NamedPageBuilder where
+  (NamedPageBuilder t1 _) == (NamedPageBuilder t2 _) = t1 == t2
 
-instance Eq NamedBuilder where
-  (NamedBuilder t1 _) == (NamedBuilder t2 _) = t1 == t2
+instance Show NamedPageBuilder where
+  show (NamedPageBuilder t _) = "a page builder named " <> T.unpack t
 
-instance Show NamedBuilder where
-  show (NamedBuilder t _) = "a builder named " <> T.unpack t
-
--- | Extract the 'PageBuilder' from a @NamedBuilder@.
-extractBuilder :: NamedBuilder -> PageBuilder
-extractBuilder (NamedBuilder _ b) = b
+-- | Extract the 'PageBuilder' from a @NamedPageBuilder@.
+extractBuilder :: NamedPageBuilder -> PageBuilder
+extractBuilder (NamedPageBuilder _ b) = b
 
 -- | A @Params@ value that may have a file path associated with it.
 --   If loaded from a file, the path should be assigned when doing so.
@@ -161,7 +155,7 @@ paramsFromFile file = do
 -- | Create a @Doc@ by running a 'PageBuilder' consecutively, using each entry in the
 --   list as parameters.
 builderWithParams ::
-     Monad m => [(NamedBuilder, PathedParams)] -> DocResult m Content
+     Monad m => [(NamedPageBuilder, PathedParams)] -> DocResult m Content
 builderWithParams list = do
   let func (b, v) = buildDoc b v
   mapped <- mapM func list
@@ -171,7 +165,7 @@ builderWithParams list = do
   return $ contentList mapped
 
 -- | Build a @Doc@ by running a 'PageBuilder' with the given parameters.
-buildDoc :: Monad m => NamedBuilder -> PathedParams -> DocResult m Content
+buildDoc :: Monad m => NamedPageBuilder -> PathedParams -> DocResult m Content
 buildDoc nb (PathedParams params path) =
   mapResultError (resultLiftEither $ b params) $ convertBuilderError path
   where
@@ -180,24 +174,24 @@ buildDoc nb (PathedParams params path) =
 
 -- | Evaluates the given 'PageBuilder' to text with the given parameters.
 executeBuilder ::
-     MonadReadWorld m => NamedBuilder -> PathedParams -> DocResult m T.Text
+     MonadReadWorld m => NamedPageBuilder -> PathedParams -> DocResult m T.Text
 executeBuilder b pp = buildDoc b pp >>= conEvaluate
 
 -- | Determines files needed to run the 'PageBuilder' with the given parameters.
 filesForBuilder ::
-     MonadReadWorld m => NamedBuilder -> PathedParams -> DocResult m FilePathSet
+     MonadReadWorld m => NamedPageBuilder -> PathedParams -> DocResult m FilePathSet
 filesForBuilder b pp = buildDoc b pp >>= conNeededFiles
 
--- | Show the actions the 'Builder' will take to build the page.
+-- | Show the actions the 'NamedPageBuilder' will take to build the page.
 showBuilder :: 
-     MonadReadWorld m => NamedBuilder -> PathedParams -> DocResult m T.Text
+     MonadReadWorld m => NamedPageBuilder -> PathedParams -> DocResult m T.Text
 showBuilder b pp = do
     doc <- buildDoc b pp
     return $ conShow doc
 
--- | Preview the actions the 'Builder' will take to build the page.
+-- | Preview the actions the 'NamedPageBuilder' will take to build the page.
 previewBuilder :: 
-     MonadReadWorld m => NamedBuilder -> PathedParams -> DocResult m T.Text
+     MonadReadWorld m => NamedPageBuilder -> PathedParams -> DocResult m T.Text
 previewBuilder b pp = buildDoc b pp >>= conPreview
 
 -- | Represents operations that evaluate to text.
@@ -292,7 +286,7 @@ actListNeededFiles doc = do
 actListExecute :: MonadReadWorld m => [Action] -> T.Text -> DocResult m T.Text
 actListExecute xs text = foldM (flip actExecute) text xs
 
-type SBEntry = (NamedBuilder, PathedParams)
+type SBEntry = (NamedPageBuilder, PathedParams)
 
 type SBList = [SBEntry]
 
@@ -304,7 +298,7 @@ type SBListFunc = SBList -> SBList
 --   on.
 data SubBuilderExec =
   SubBuilderExec
-    { sbBuilder :: NamedBuilder -- ^ The 'Builder' to use.
+    { sbBuilder :: NamedPageBuilder -- ^ The 'NamedPageBuilder' to use.
     , sbDefault :: Params -- ^ Default 'Params'. If a 'Params' doesn't have a key from the defaults, the value from those defaults will be used.
     , sbParams :: [PathedParams] -- ^ The 'Params' to operate on.
     , sbFiles :: [FilePath] -- ^ Parameter files to load and also operate on.

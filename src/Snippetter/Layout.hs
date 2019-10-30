@@ -71,21 +71,66 @@ instance Show LayoutError where
 -- | The result of a function that makes/executes a @SiteAction@.
 type LayoutResult m a = Result LayoutError m a
 
--- | A map of @T.Text@ to @Builder@s.
-type BuilderMap = HM.HashMap T.Text NamedBuilder
+-- | A 'MetaBuilder' works like a 'PageBuilder', except it runs directly within
+-- 'MonadReadWorld' and returns a list of 'PathedSiteAction's on success.
+type MetaBuilder m = Params -> MetaResult m
 
--- | Insert a @Builder@ into a @BuilderMap@ as a @NamedBuilder@.
-insertPageBuilder :: T.Text -> PageBuilder -> BuilderMap -> BuilderMap
-insertPageBuilder name builder = HM.insert name (NamedBuilder name builder)
+-- | Result of a 'MetaBuilder'.
+type MetaResult m = Result BuilderError m [PathedSiteAction]
 
--- | Insert @Builder@s into a @BuilderMap@ as @NamedBuilder@s.
-insertPageBuilders :: [(T.Text, PageBuilder)] -> BuilderMap -> BuilderMap
+-- | A 'MetaBuilder' that has a name associated with it.
+data NamedMetaBuilder m = NamedMetaBuilder T.Text (MetaBuilder m)
+
+instance Eq (NamedMetaBuilder m) where
+  (NamedMetaBuilder t1 _) == (NamedMetaBuilder t2 _) = t1 == t2
+
+instance Show (NamedMetaBuilder m) where
+  show (NamedMetaBuilder t _) = "a meta builder named " <> T.unpack t
+
+-- | Maps for all types of builders.
+data BuilderMap m =
+  BuilderMap 
+    { pageBuilders :: HM.HashMap T.Text NamedPageBuilder
+    , metaBuilders :: HM.HashMap T.Text (NamedMetaBuilder m)
+    }
+
+-- | Insert a 'PageBuilder' into a 'BuilderMap' as a 'NamedPageBuilder'.
+insertPageBuilder :: T.Text -> PageBuilder -> BuilderMap m -> BuilderMap m
+insertPageBuilder name builder bmap =
+  bmap {pageBuilders = HM.insert name namebuilder pagemap }
+    where
+      pagemap = pageBuilders bmap
+      namebuilder = NamedPageBuilder name builder
+
+-- | Insert 'PageBuilder's into a 'BuilderMap' as 'NamedPageBuilder's.
+insertPageBuilders :: [(T.Text, PageBuilder)] -> BuilderMap m -> BuilderMap m
 insertPageBuilders bindings bmap =
   foldr (uncurry insertPageBuilder) bmap bindings
 
+-- | Insert a 'MetaBuilder' into a 'BuilderMap' as a 'NamedMetaBuilder'.
+insertMetaBuilder ::
+     MonadReadWorld m => T.Text -> MetaBuilder m -> BuilderMap m -> BuilderMap m
+insertMetaBuilder name builder bmap =
+  bmap {metaBuilders = HM.insert name namebuilder metamap }
+    where
+      metamap = metaBuilders bmap
+      namebuilder = NamedMetaBuilder name builder
+
+-- | Insert 'MetaBuilder's into a 'BuilderMap' as 'NamedMetaBuilder's.
+insertMetaBuilders ::
+     MonadReadWorld m => [(T.Text, MetaBuilder m)] -> BuilderMap m -> BuilderMap m
+insertMetaBuilders bindings bmap =
+  foldr (uncurry insertMetaBuilder) bmap bindings
+
+getPageBuilder :: T.Text -> BuilderMap m -> Either LayoutError NamedPageBuilder
+getPageBuilder t bmap = lookupEither (MissingBuilder t) t (pageBuilders bmap)
+
+getMetaBuilder :: T.Text -> BuilderMap m -> Either LayoutError (NamedMetaBuilder m)
+getMetaBuilder t bmap = lookupEither (MissingBuilder t) t (metaBuilders bmap)
+
 -- | Creates an empty @BuilderMap@.
-emptyBuilderMap :: BuilderMap
-emptyBuilderMap = HM.empty
+emptyBuilderMap :: MonadReadWorld m => BuilderMap m
+emptyBuilderMap = BuilderMap HM.empty HM.empty
 
 -- | Site actions as immediately loaded from a YAML file.
 data Layout
@@ -121,7 +166,7 @@ data PathedLayout
 
 -- | Describes an action taken to build the site.
 data SiteAction
-  = Build NamedBuilder PathedParams FilePath
+  = Build NamedPageBuilder PathedParams FilePath
   | Copy FilePath FilePath
   | Move FilePath FilePath
   | Delete FilePath
@@ -267,7 +312,7 @@ executeActions pathedActions = do
 -- | Execute the given operation on all @SiteAction@s resulting from a layout
 -- file.
 actOnLayoutFiles ::
-     MonadWriteWorld m => ([PathedSiteAction] -> m ()) -> BuilderMap -> [FilePath] -> m ()
+     MonadWriteWorld m => ([PathedSiteAction] -> m ()) -> BuilderMap m -> [FilePath] -> m ()
 actOnLayoutFiles act bmap path = do
   actions <- runResult $ loadLayoutFiles bmap path
   case actions of
@@ -278,40 +323,39 @@ actOnLayoutFiles act bmap path = do
 
 -- | Load a layout file and execute all @SiteAction@s resulting from it,
 -- notifying the user of the results of each.
-executeLayout :: MonadWriteWorld m => BuilderMap -> [FilePath] -> m ()
+executeLayout :: MonadWriteWorld m => BuilderMap m -> [FilePath] -> m ()
 executeLayout = actOnLayoutFiles executeActions
 
 -- | Load a layout file and show the user the dependencies of all
 -- @SiteAction@s resulting from it.
-showLayoutDeps :: MonadWriteWorld m => BuilderMap -> [FilePath] -> m ()
+showLayoutDeps :: MonadWriteWorld m => BuilderMap m -> [FilePath] -> m ()
 showLayoutDeps = actOnLayoutFiles showActionsDeps
 
 -- | Load a layout file and show the user the output files of all
 -- @SiteAction@s resulting from it.
-showLayoutOutput :: MonadWriteWorld m => BuilderMap -> [FilePath] -> m ()
+showLayoutOutput :: MonadWriteWorld m => BuilderMap m -> [FilePath] -> m ()
 showLayoutOutput = actOnLayoutFiles showActionsOutput
 
 -- | Load a layout file and show the user @SiteAction@s resulting from it.
-showLayout :: MonadWriteWorld m => BuilderMap -> [FilePath] -> m ()
+showLayout :: MonadWriteWorld m => BuilderMap m -> [FilePath] -> m ()
 showLayout = actOnLayoutFiles showActions
 
 -- | Load a layout file and show the user previews of @SiteAction@s resulting
 -- from it.
-previewLayout :: MonadWriteWorld m => BuilderMap -> [FilePath] -> m ()
+previewLayout :: MonadWriteWorld m => BuilderMap m -> [FilePath] -> m ()
 previewLayout = actOnLayoutFiles previewActions
 
 -- | Converts a @PathedLayout@ to a @SiteAction@, when given a mapping of
 --   strings to builders.
 layoutToActions ::
-     MonadReadWorld m => BuilderMap -> PathedLayout -> LayoutResult m [PathedSiteAction]
+     MonadReadWorld m => BuilderMap m -> PathedLayout -> LayoutResult m [PathedSiteAction]
 layoutToActions bmap (PathedLayout layout input) = do
     sa <- ll input layout
     return $ map (`PathedSiteAction` input) sa
   where
     ll path (LayoutBuild output builderName contents) = do
       let mp = PathedParams contents input
-      let err = MissingBuilder builderName
-      let builder = lookupEither err builderName bmap
+      let builder = getPageBuilder builderName bmap
       case builder of
         Right r -> return [Build r mp output]
         Left l -> resultE l
@@ -324,14 +368,14 @@ layoutToActions bmap (PathedLayout layout input) = do
 
 -- | Loads a list of @SiteAction@ from a layout file.
 loadLayoutFile ::
-     MonadReadWorld m => BuilderMap -> FilePath -> LayoutResult m [PathedSiteAction]
+     MonadReadWorld m => BuilderMap m -> FilePath -> LayoutResult m [PathedSiteAction]
 loadLayoutFile map path = do
   layout <- loadLayoutFileRaw path
   concat <$> mapM (layoutToActions map) layout
 
 -- | Loads a list of @SiteAction@ from multiple layout files.
 loadLayoutFiles ::
-     MonadReadWorld m => BuilderMap -> [FilePath] -> LayoutResult m [PathedSiteAction]
+     MonadReadWorld m => BuilderMap m -> [FilePath] -> LayoutResult m [PathedSiteAction]
 loadLayoutFiles bmap paths = do
     actions <- mapM (loadLayoutFile bmap) paths
     return $ concat actions

@@ -116,21 +116,21 @@ replaceText t1 t2 = replace t1 $ text t2
 
 -- | Shorthand for creating a @SubBuilder@ with just one @SubBuilderExec@.
 singleSubBuilder ::
-     NamedBuilder -> Params -> [PathedParams] -> [FilePath] -> SBListFunc -> Content
+     NamedPageBuilder -> Params -> [PathedParams] -> [FilePath] -> SBListFunc -> Content
 singleSubBuilder m p pp fp func = subBuilder [SubBuilderExec m p pp fp func] id
 
 -- | Shorthand for creating a @SubBuilder@ that executes the builder on one file.
-subBuilderOnFile :: NamedBuilder -> FilePath -> Content
+subBuilderOnFile :: NamedPageBuilder -> FilePath -> Content
 subBuilderOnFile m f =
   subBuilder [SubBuilderExec m emptyParams [] [f] id] id
 
-subBuildersOnFiles :: [(NamedBuilder, [FilePath])] -> Content
+subBuildersOnFiles :: [(NamedPageBuilder, [FilePath])] -> Content
 subBuildersOnFiles mf = subBuilder (map foo mf) id
   where
     foo (nb, paths) = SubBuilderExec nb emptyParams [] paths id
 
 -- | Get the 'Params' from a 'SBList' entry.
-paramsFromPair :: (NamedBuilder, PathedParams) -> Params
+paramsFromPair :: (NamedPageBuilder, PathedParams) -> Params
 paramsFromPair (_, pp) = params pp
 
 -- | Get the 'Params' from a 'SBList' entry (shorthand).

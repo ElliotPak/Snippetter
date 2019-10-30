@@ -133,7 +133,7 @@ testRoots =
         , Copy "bar" "asdf"
         , combined 
         ]
-    combined = Build (NamedBuilder "combined" bb) emptyPathedParams "somewhere"
+    combined = Build (NamedPageBuilder "combined" bb) emptyPathedParams "somewhere"
     pCombined = PathedSiteAction combined Nothing
     bb params = return $ doc (snippet "yay") [add $ snippet "asdf"]
     roots rootsOf acts = do
@@ -166,5 +166,5 @@ testShouldUpdate =
       FG.shouldUpdateSiteAction graph (PathedSiteAction act Nothing)
     bb files params = return $ doc emptyContent $ map addsnip files
     addsnip file = add $ snippet file
-    combined files = Build (NamedBuilder "combined" (bb files)) emptyPathedParams
+    combined files = Build (NamedPageBuilder "combined" (bb files)) emptyPathedParams
     pCombined files out = PathedSiteAction (combined files out) Nothing

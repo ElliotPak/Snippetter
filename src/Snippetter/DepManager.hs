@@ -101,12 +101,12 @@ graphFromActions pathedActions = do
 
 -- | Execute all @SiteAction@s resulting from a layout file if their outputs
 -- aren't up to date but their dependencies are.
-updateLayoutFile :: MonadWriteWorld m => BuilderMap -> FilePath -> m ()
+updateLayoutFile :: MonadWriteWorld m => BuilderMap m -> FilePath -> m ()
 updateLayoutFile map file = updateLayout map [file]
 
 -- | Execute all @SiteAction@s resulting from the layout files if their outputs
 -- aren't up to date but their dependencies are.
-updateLayout :: MonadWriteWorld m => BuilderMap -> [FilePath] -> m ()
+updateLayout :: MonadWriteWorld m => BuilderMap m -> [FilePath] -> m ()
 updateLayout map files =
   profileWorldAction $ whenResult load updateActions
   where
@@ -144,32 +144,32 @@ showActionsOutputNeeded = actOnAllChildren showActionsOutput
 -- | Show the user the 'SiteAction's resulting from the layout file that aren't
 -- up to date but whose dependencies are.
 showLayoutNeeded ::
-     MonadWriteWorld m => BuilderMap -> [FilePath] -> m ()
+     MonadWriteWorld m => BuilderMap m -> [FilePath] -> m ()
 showLayoutNeeded = actOnLayoutFiles showActions
 
 -- | Preview the user the 'SiteAction's resulting from the layout file that
 -- aren't up to date but whose dependencies are.
 previewLayoutNeeded ::
-     MonadWriteWorld m => BuilderMap -> [FilePath] -> m ()
+     MonadWriteWorld m => BuilderMap m -> [FilePath] -> m ()
 previewLayoutNeeded = actOnLayoutFiles previewActions
 
 -- | Show the user the dependencies of the 'SiteAction's resulting from the
 -- layout file that aren't up to date but whose dependencies are.
 showLayoutDepsNeeded ::
-     MonadWriteWorld m => BuilderMap -> [FilePath] -> m ()
+     MonadWriteWorld m => BuilderMap m -> [FilePath] -> m ()
 showLayoutDepsNeeded = actOnLayoutFiles showActionsDeps
 
 -- | Show the user the output files of the 'SiteAction's resulting from the
 -- layout file that aren't up to date but whose dependencies are.
 showLayoutOutputNeeded ::
-     MonadWriteWorld m => BuilderMap -> [FilePath] -> m ()
+     MonadWriteWorld m => BuilderMap m -> [FilePath] -> m ()
 showLayoutOutputNeeded = actOnLayoutFiles showActionsOutput
 
 -- | Execute the given operation on all @SiteAction@s resulting from a layout
 -- file. This differs from the "Snippetter.Layout" equivalent in that it only
 -- does the action on the 'SiteAction's that would be updated.
 actOnLayoutFiles ::
-     MonadWriteWorld m => ([PathedSiteAction] -> m ()) -> BuilderMap -> [FilePath] -> m ()
+     MonadWriteWorld m => ([PathedSiteAction] -> m ()) -> BuilderMap m -> [FilePath] -> m ()
 actOnLayoutFiles act map path = do
   actions <- runResult $ loadLayoutFiles map path `mapResultError` LayoutDepManError
   case actions of

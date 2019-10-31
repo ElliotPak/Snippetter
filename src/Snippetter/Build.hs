@@ -101,9 +101,9 @@ instance Eq NamedPageBuilder where
 instance Show NamedPageBuilder where
   show (NamedPageBuilder t _) = "a page builder named " <> T.unpack t
 
--- | Extract the 'PageBuilder' from a @NamedPageBuilder@.
-extractBuilder :: NamedPageBuilder -> PageBuilder
-extractBuilder (NamedPageBuilder _ b) = b
+-- | Extract the 'PageBuilder' from a 'NamedPageBuilder'.
+extractPageBuilder :: NamedPageBuilder -> PageBuilder
+extractPageBuilder (NamedPageBuilder _ b) = b
 
 -- | A @Params@ value that may have a file path associated with it.
 --   If loaded from a file, the path should be assigned when doing so.
@@ -169,7 +169,7 @@ buildDoc :: Monad m => NamedPageBuilder -> PathedParams -> DocResult m Content
 buildDoc nb (PathedParams params path) =
   mapResultError (resultLiftEither $ b params) $ convertBuilderError path
   where
-    b = extractBuilder nb
+    b = extractPageBuilder nb
     convertBuilderError path err = DocBuilderError err nb path
 
 -- | Evaluates the given 'PageBuilder' to text with the given parameters.

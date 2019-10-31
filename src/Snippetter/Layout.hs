@@ -56,6 +56,7 @@ data LayoutError
   | LayoutYamlError YamlError
   | LayoutFileError FileError
   | MissingBuilder T.Text
+  | MetaBuilderError T.Text (Maybe FilePath) BuilderError
   | MiscLayoutError T.Text
   deriving (Eq)
 
@@ -76,7 +77,7 @@ type LayoutResult m a = Result LayoutError m a
 type MetaBuilder m = Params -> MetaResult m
 
 -- | Result of a 'MetaBuilder'.
-type MetaResult m = Result BuilderError m [PathedSiteAction]
+type MetaResult m = Result BuilderError m [SiteAction]
 
 -- | A 'MetaBuilder' that has a name associated with it.
 data NamedMetaBuilder m = NamedMetaBuilder T.Text (MetaBuilder m)
@@ -86,6 +87,12 @@ instance Eq (NamedMetaBuilder m) where
 
 instance Show (NamedMetaBuilder m) where
   show (NamedMetaBuilder t _) = "a meta builder named " <> T.unpack t
+
+-- | Execute the given 'NamedPageBuilder' and wrap the error correctly.
+execMetaBuilder ::
+     MonadReadWorld m => NamedMetaBuilder m -> PathedParams -> LayoutResult m [SiteAction]
+execMetaBuilder (NamedMetaBuilder t b) (PathedParams pp path) =
+  b pp `mapResultError` MetaBuilderError t path
 
 -- | Maps for all types of builders.
 data BuilderMap m =
@@ -134,11 +141,12 @@ emptyBuilderMap = BuilderMap HM.empty HM.empty
 
 -- | Site actions as immediately loaded from a YAML file.
 data Layout
-  = LayoutBuild FilePath T.Text Params
+  = LayoutBuildPage FilePath T.Text Params
+  | LayoutBuildActions T.Text Params
   | LayoutCopy FilePath FilePath
   | LayoutMove FilePath FilePath
   | LayoutDelete FilePath
-  | LayoutRunProcess T.Text T.Text
+  | LayoutRawProcess T.Text T.Text
   deriving (Show, Eq)
 
 instance Y.FromJSON Layout where
@@ -146,15 +154,18 @@ instance Y.FromJSON Layout where
     Y.withObject "LayoutFile" $ \o -> do
       kind <- o .: T.pack "type"
       case T.unpack kind of
-        "build" ->
-          LayoutBuild <$> o .: T.pack "output-file" <*>
+        "build-page" ->
+          LayoutBuildPage <$> o .: T.pack "output" <*>
           o .: T.pack "builder-name" <*>
+          o .: T.pack "parameters"
+        "build-meta" ->
+          LayoutBuildActions <$> o .: T.pack "builder-name" <*>
           o .: T.pack "parameters"
         "copy" -> LayoutCopy <$> o .: T.pack "from" <*> o .: T.pack "to"
         "move" -> LayoutMove <$> o .: T.pack "from" <*> o .: T.pack "to"
         "delete" -> LayoutDelete <$> o .: T.pack "file"
         "run-process" ->
-          LayoutRunProcess <$> o .: T.pack "process" <*> o .: T.pack "stdin"
+          LayoutRawProcess <$> o .: T.pack "process" <*> o .: T.pack "stdin"
         _ -> fail "not a valid layout file type"
 
 -- | A Layout value that may have a file path associated with it.
@@ -345,24 +356,29 @@ showLayout = actOnLayoutFiles showActions
 previewLayout :: MonadWriteWorld m => BuilderMap m -> [FilePath] -> m ()
 previewLayout = actOnLayoutFiles previewActions
 
--- | Converts a @PathedLayout@ to a @SiteAction@, when given a mapping of
---   strings to builders.
+-- | Converts a 'PathedLayout' to a list of 'SiteAction's.
 layoutToActions ::
      MonadReadWorld m => BuilderMap m -> PathedLayout -> LayoutResult m [PathedSiteAction]
 layoutToActions bmap (PathedLayout layout input) = do
     sa <- ll input layout
     return $ map (`PathedSiteAction` input) sa
   where
-    ll path (LayoutBuild output builderName contents) = do
+    ll path (LayoutBuildPage output builderName contents) = do
       let mp = PathedParams contents input
       let builder = getPageBuilder builderName bmap
       case builder of
         Right r -> return [Build r mp output]
         Left l -> resultE l
+    ll path (LayoutBuildActions builderName contents) = do
+      let mp = PathedParams contents input
+      let builder = getMetaBuilder builderName bmap
+      case builder of
+        Right r -> execMetaBuilder r mp
+        Left l -> resultE l
     ll path (LayoutCopy from to) = return [Copy from to]
     ll path (LayoutMove from to) = return [Move from to]
     ll path (LayoutDelete file) = return [Delete file]
-    ll path (LayoutRunProcess process stdin) = return [Run split stdin]
+    ll path (LayoutRawProcess process stdin) = return [Run split stdin]
       where
         split = T.splitOn " " process
 

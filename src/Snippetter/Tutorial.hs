@@ -62,12 +62,11 @@ import Data.Text (Text)
     which can be used by replacing @Layout@ in the name with @Actions@. See
     "Snippetter.Layout" and "Snippetter.DepManager" for more info.
 
-    = Builders
+    = Page Builders
 
-    /Builders/, specifically 'PageBuilder's, specify how to take a set of
-    parameters (i.e. a JSON object) and convert that into an instance of
-    'Content', which represents a file before it's been built. A builder looks
-    something like the following:
+    'PageBuilder's specify how to take a set of parameters (i.e. a JSON object)
+    and convert that into an instance of 'Content', which represents a file
+    before it's been built. A builder looks something like the following:
 
     > pageTitle :: PageBuilder
     > pageTitle params = do
@@ -131,6 +130,15 @@ import Data.Text (Text)
     You can also use 'noContentAction', 'singleContentAction', and
     'multiContentAction' to create your own 'Action's.
 
+    = Meta Builders
+
+    'MetaBuilders' work similarly to 'PageBuilder's in that they take a
+    'Params', but they create other 'PathedSiteAction's instead of files. They
+    also operate within the 'MonadReadWorld' monad, meaning they can directly
+    read files, get the current time, and so on. There are no equivalents to
+    'snippet' or 'subBuilder' for 'MetaBuilder's; instead you can read files
+    directly.
+
     = Layout Files
 
     Aside from your Haskell source files, the other type of file that you
@@ -138,19 +146,35 @@ import Data.Text (Text)
     to execute. It should be a list of objects, and each object should be one
     of the following:
 
-    == Build
+    == Page Builder
 
-    /Build/ actions specify what builder from the 'BuilderMap' to use and what
-    parameters to use with it.
+    /Page builder/ actions specify a 'NamedPageBuilder' to use, what parameters
+    to use with it, and the destination file.
 
-    > type: builder
+    > type: build-page
     > output: STRING
     > builder-name: STRING
     > parameters: OBJECT
 
     * @output@ corresponds to the output file.
-    * @builder-name@ indicates which builder from the builder map to use.
-    * @parameters@ indicates the parameters that the 'NamedPageBuilder' will be run with.
+    * @builder-name@ indicates which 'NamedPageBuilder' from the builder map to
+      use.
+    * @parameters@ indicates the parameters that the 'NamedPageBuilder' will be
+      run with.
+
+    == Meta Builder
+
+    /Meta builder/ actions specify a 'NamedMetaBuilder' to use and what
+    parameters to use with it.
+
+    > type: build-actions
+    > builder-name: STRING
+    > parameters: OBJECT
+
+    * @builder-name@ indicates which 'NamedMetaBuilder' from the builder map to
+      use.
+    * @parameters@ indicates the parameters that the 'NamedMetaBuilder' will be
+      run with.
     
     == Copy
 

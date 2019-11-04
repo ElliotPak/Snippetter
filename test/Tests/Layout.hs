@@ -19,10 +19,16 @@ import Test.Tasty.HUnit
 import TestAssist
 
 files =
-  [ ("foo", "- title: from-file")
-  , ("bar", "- title: from-file")
-  , ("baz", "- title: from-file")
+  [ ("foo", ("- title: from-file", startTime))
+  , ("bar", ("- title: from-file", startTime))
+  , ("baz", ("- title: from-file", startTime))
   ]
+
+filesPlus name contents = files ++ [(name, (contents, startTime))]
+
+passPlus contents = passMockFiles (filesPlus "test" contents)
+
+failPlus contents = failMockFiles (filesPlus "test" contents)
 
 sameFileBuilder :: PageBuilder
 sameFileBuilder params = return $ snippet "foo"
@@ -30,11 +36,15 @@ sameFileBuilder params = return $ snippet "foo"
 noFileBuilder :: PageBuilder
 noFileBuilder params = return $ text "foo"
 
+sameFileBuild' = NamedPageBuilder "same" sameFileBuilder 
+
+noFileBuild' = NamedPageBuilder "same" noFileBuilder 
+
 sameFileBuild =
-  Build (NamedPageBuilder "same" sameFileBuilder) (makePathed emptyParams) "output"
+  Build sameFileBuild' (makePathed emptyParams) "output"
 
 noFileBuild =
-  Build (NamedPageBuilder "no" noFileBuilder) (makePathed emptyParams) "output"
+  Build noFileBuild' (makePathed emptyParams) "output"
 
 fromText str =
   unObject (Y.decodeEither' (B.pack str) :: Either Y.ParseException Y.Value)
@@ -43,7 +53,12 @@ fromText str =
 
 makePathed o = PathedParams o Nothing
 
-tests =
+tests = 
+  [ testGroup "Layout File Parsing" testLayoutParse
+  , testGroup "Functions on Actions" testActionTypes
+  ]
+
+testActionTypes =
   [ testGroup "Build" testBuild
   , testGroup "Copy" testCopy
   , testGroup "Move" testMove
@@ -74,3 +89,29 @@ testMoveFiles = passIO (saNeededFiles (Move "bar" "foo")) (HS.singleton "bar")
 testDeleteFiles = passIO (saNeededFiles (Delete "bar")) (HS.singleton "bar")
 
 testRunFiles = passIO (saNeededFiles (Run ["bar"] "")) HS.empty
+
+meta :: MonadReadWorld m => MetaBuilder m
+meta _ _ = return [Copy "foo" "bar", Move "thing" "thing2"]
+
+bmap = insertMetaBuilder "metatest" meta $ 
+    insertPageBuilders [ ("same", sameFileBuilder)
+                       , ("no", noFileBuilder)
+                       ] emptyBuilderMap
+
+testLayoutParse =
+  [ testCase "Copy, good example" $
+    passPlus copyGood (loadLayoutFile bmap "test") [pathedSA $ Copy "foo" "bar"]
+  , testCase "Move, good example" $
+    passPlus moveGood (loadLayoutFile bmap "test") [pathedSA $ Move "foo" "bar"]
+  , testCase "Page builder, good example" $
+    passPlus buildPage1 (loadLayoutFile bmap "test") [pathedSA $ Build sameFileBuild' (pathedP emptyParams) "outtest"]
+  , testCase "Meta builder, good example" $
+    passPlus buildMeta1 (loadLayoutFile bmap "test") [pathedSA $ Copy "foo" "bar", pathedSA $ Move "thing" "thing2"]
+  ]
+  where
+    pathedSA x = PathedSiteAction x (Just "test")
+    pathedP x = PathedParams x (Just "test")
+    copyGood = "- type: copy\n  from: foo\n  to: bar"
+    moveGood = "- type: move\n  from: foo\n  to: bar"
+    buildPage1 = "- type: build-page\n  builder-name: same\n  output: outtest\n  parameters: {}"
+    buildMeta1 = "- type: build-meta\n  builder-name: metatest\n  parameters: {}"

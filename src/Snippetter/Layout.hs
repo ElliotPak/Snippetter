@@ -6,10 +6,17 @@ module Snippetter.Layout
   ( -- * Results, Errors, and Important Things
     LayoutError
   , LayoutResult
+    -- * MetaBuilders
+  , MetaBuilder
+  , NamedMetaBuilder
+  , MetaResult
+    -- * Builder Map
   , BuilderMap
   , emptyBuilderMap
   , insertPageBuilder
   , insertPageBuilders
+  , insertMetaBuilder
+  , insertMetaBuilders
   -- * Site Actions
   , SiteAction (..)
   , PathedSiteAction (..)
@@ -74,7 +81,7 @@ type LayoutResult m a = Result LayoutError m a
 
 -- | A 'MetaBuilder' works like a 'PageBuilder', except it runs directly within
 -- 'MonadReadWorld' and returns a list of 'PathedSiteAction's on success.
-type MetaBuilder m = Params -> MetaResult m
+type MetaBuilder m = BuilderMap m -> Params -> MetaResult m
 
 -- | Result of a 'MetaBuilder'.
 type MetaResult m = Result BuilderError m [SiteAction]
@@ -88,11 +95,15 @@ instance Eq (NamedMetaBuilder m) where
 instance Show (NamedMetaBuilder m) where
   show (NamedMetaBuilder t _) = "a meta builder named " <> T.unpack t
 
--- | Execute the given 'NamedPageBuilder' and wrap the error correctly.
+-- | Execute the given 'NamedMetaBuilder' and wrap the error correctly.
 execMetaBuilder ::
-     MonadReadWorld m => NamedMetaBuilder m -> PathedParams -> LayoutResult m [SiteAction]
-execMetaBuilder (NamedMetaBuilder t b) (PathedParams pp path) =
-  b pp `mapResultError` MetaBuilderError t path
+     MonadReadWorld m =>
+     BuilderMap m ->
+     NamedMetaBuilder m ->
+     PathedParams ->
+     LayoutResult m [SiteAction]
+execMetaBuilder bmap (NamedMetaBuilder t b) (PathedParams pp path) =
+  b bmap pp `mapResultError` MetaBuilderError t path
 
 -- | Maps for all types of builders.
 data BuilderMap m =
@@ -373,7 +384,7 @@ layoutToActions bmap (PathedLayout layout input) = do
       let mp = PathedParams contents input
       let builder = getMetaBuilder builderName bmap
       case builder of
-        Right r -> execMetaBuilder r mp
+        Right r -> execMetaBuilder bmap r mp
         Left l -> resultE l
     ll path (LayoutCopy from to) = return [Copy from to]
     ll path (LayoutMove from to) = return [Move from to]
@@ -392,9 +403,8 @@ loadLayoutFile map path = do
 -- | Loads a list of @SiteAction@ from multiple layout files.
 loadLayoutFiles ::
      MonadReadWorld m => BuilderMap m -> [FilePath] -> LayoutResult m [PathedSiteAction]
-loadLayoutFiles bmap paths = do
-    actions <- mapM (loadLayoutFile bmap) paths
-    return $ concat actions
+loadLayoutFiles bmap paths =
+    concat <$> mapM (loadLayoutFile bmap) paths
 
 -- | Determine files needed to execute a @SiteAction@.
 saNeededFiles :: MonadReadWorld m => SiteAction -> LayoutResult m FilePathSet

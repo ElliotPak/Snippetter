@@ -81,7 +81,7 @@ type LayoutResult m a = Result LayoutError m a
 
 -- | A 'MetaBuilder' works like a 'PageBuilder', except it runs directly within
 -- 'MonadReadWorld' and returns a list of 'PathedSiteAction's on success.
-type MetaBuilder m = BuilderMap m -> Params -> MetaResult m
+type MetaBuilder m = BuilderMap m -> Maybe FilePath -> Params -> MetaResult m
 
 -- | Result of a 'MetaBuilder'.
 type MetaResult m = Result BuilderError m [SiteAction]
@@ -103,7 +103,7 @@ execMetaBuilder ::
      PathedParams ->
      LayoutResult m [SiteAction]
 execMetaBuilder bmap (NamedMetaBuilder t b) (PathedParams pp path) =
-  b bmap pp `mapResultError` MetaBuilderError t path
+  b bmap path pp `mapResultError` MetaBuilderError t path
 
 -- | Maps for all types of builders.
 data BuilderMap m =

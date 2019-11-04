@@ -17,6 +17,9 @@ module Snippetter.Utilities
   , emptyParams
   , nullParams
   , paramUnion
+  , PathedParams(..)
+  , emptyPathedParams
+  , pathedParamDefault
     -- * Other important stuff
   , FilePathSet
     -- * Text/String utilities
@@ -106,10 +109,29 @@ emptyParams = HM.empty
 nullParams :: Params -> Bool
 nullParams = HM.null
 
--- | The union of two Params. If a key occurs in both, the valu from the first
+-- | The union of two Params. If a key occurs in both, the value from the first
 -- will be the value in the result.
 paramUnion :: Params -> Params -> Params
 paramUnion = HM.union
+
+-- | A @Params@ value that may have a file path associated with it.
+--   If loaded from a file, the path should be assigned when doing so.
+--   If defined in a source file, the path should be @Nothing@.
+data PathedParams =
+  PathedParams
+    { params :: Params
+    , ppath :: Maybe FilePath
+    }
+  deriving (Show, Eq)
+
+-- | Creates a 'PathedParams' with no path or parameters.
+emptyPathedParams = PathedParams HM.empty Nothing
+
+-- | Add fields present in the first @Params@ to the @PathedParams@ if they're
+--   missing from the second.
+pathedParamDefault :: Params -> PathedParams -> PathedParams
+pathedParamDefault def (PathedParams params ppath) =
+  PathedParams (paramUnion params def) ppath
 
 -- | Maps all elements in a 'HS.HashSet'.
 mapSet :: (Eq b, Hashable b) => (a -> b) -> HS.HashSet a -> HS.HashSet b

@@ -20,6 +20,9 @@ module Snippetter.IO
   , notifyInfo
   -- * World read/write functions
   , yamlIfExists
+  , yamlAsParams
+  , paramsFromFile
+  , mergeParams
   , pathWalk
   , pathWalkEndingIn
   , packRunProcess
@@ -323,3 +326,30 @@ pathWalkEndingIn folder ending = do
   walked <- pathWalk folder
   let f = isSuffixOf ending
   return $ filter f walked
+
+-- | Load a YAML file as a list of @Params@.
+yamlAsParams :: MonadReadWorld m => FilePath -> YamlResult m [Params]
+yamlAsParams path =
+   yamlIfExists "List of parameters" path
+       :: MonadReadWorld m => YamlResult m [Params]
+
+-- | Load all paramaters from a (possible) paramater file as @PathedParams@.
+paramsFromFile :: MonadReadWorld m => FilePath -> YamlResult m [PathedParams]
+paramsFromFile file = do
+  values <- yamlAsParams file
+  let addPath x = PathedParams x $ Just file
+  return $ map addPath values
+
+-- | Load all parameters from files, merge them with the given list, and add
+-- missing attributes that exist in another set of parameters, associating them
+-- all with relevant filenames.
+mergeParams ::
+     MonadReadWorld m =>
+     [PathedParams] ->
+     [FilePath] -> 
+     Params ->
+     YamlResult m [PathedParams]
+mergeParams params files def = do
+    paramsFromFile <- concat <$> mapM paramsFromFile files
+    let allParams = params ++ paramsFromFile
+    return $ map (pathedParamDefault def) allParams

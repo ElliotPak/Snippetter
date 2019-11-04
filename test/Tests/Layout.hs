@@ -91,7 +91,7 @@ testDeleteFiles = passIO (saNeededFiles (Delete "bar")) (HS.singleton "bar")
 testRunFiles = passIO (saNeededFiles (Run ["bar"] "")) HS.empty
 
 meta :: MonadReadWorld m => MetaBuilder m
-meta _ _ = return [Copy "foo" "bar", Move "thing" "thing2"]
+meta _ _ _ = return [Copy "foo" "bar", Move "thing" "thing2"]
 
 bmap = insertMetaBuilder "metatest" meta $ 
     insertPageBuilders [ ("same", sameFileBuilder)

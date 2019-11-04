@@ -10,8 +10,6 @@ module Snippetter.Build
   , PageResult
   , PageBuilder
   , NamedPageBuilder(..)
-  , PathedParams(..)
-  , emptyPathedParams
   , executeBuilder
   , filesForBuilder
   , showBuilder
@@ -105,19 +103,6 @@ instance Show NamedPageBuilder where
 extractPageBuilder :: NamedPageBuilder -> PageBuilder
 extractPageBuilder (NamedPageBuilder _ b) = b
 
--- | A @Params@ value that may have a file path associated with it.
---   If loaded from a file, the path should be assigned when doing so.
---   If defined in a source file, the path should be @Nothing@.
-data PathedParams =
-  PathedParams
-    { params :: Params
-    , ppath :: Maybe FilePath
-    }
-  deriving (Show, Eq)
-
--- | Creates a 'PathedParams' with no path or parameters.
-emptyPathedParams = PathedParams HM.empty Nothing
-
 -- | Things that can go wrong while a builder is being run.
 data BuilderError
   = AbsentKey T.Text
@@ -136,21 +121,6 @@ fileContentsInDoc :: MonadReadWorld m => FilePath -> DocResult m T.Text
 fileContentsInDoc path = getFileContents path `mapResultError` mapping
   where
     mapping = DocFileError
-
--- | Load a YAML file as a list of @Params@.
-yamlAsParams :: MonadReadWorld m => FilePath -> DocResult m [Params]
-yamlAsParams path =
-  let errorMapping = DocYamlError
-   in (yamlIfExists "List of parameters" path :: MonadReadWorld m =>
-                                                   YamlResult m [Params]) `mapResultError`
-      errorMapping
-
--- | Load all paramaters from a (possible) paramater file as @PathedParams@.
-paramsFromFile :: MonadReadWorld m => FilePath -> DocResult m [PathedParams]
-paramsFromFile file = do
-  values <- yamlAsParams file
-  let addPath x = PathedParams x $ Just file
-  return $ map addPath values
 
 -- | Create a @Doc@ by running a 'PageBuilder' consecutively, using each entry in the
 --   list as parameters.
@@ -308,19 +278,10 @@ data SubBuilderExec =
 instance Show SubBuilderExec where
   show s = T.unpack $ sbeShow s
 
--- | Load parameters from all parameter files in a @SubBuilderExec@, without
---   default parameters applied.
-sbFileParams :: MonadReadWorld m => SubBuilderExec -> DocResult m [PathedParams]
-sbFileParams sb = do
-  params <- mapM paramsFromFile (sbFiles sb)
-  return $ concat params
-
 -- | Load all parameters in a @SubBuilderExec@, with default parameters applied.
 sbAllParams :: MonadReadWorld m => SubBuilderExec -> DocResult m [PathedParams]
-sbAllParams sb = do
-  fileParams <- sbFileParams sb
-  let allParams = sbParams sb ++ fileParams
-  return $ map (pathedParamDefault $ sbDefault sb) allParams
+sbAllParams (SubBuilderExec _ def pp files _) =
+  mergeParams pp files def `mapResultError` DocYamlError
 
 sbExecFilteredList ::
      MonadReadWorld m => SubBuilderExec -> DocResult m SBList
@@ -338,12 +299,6 @@ sbFilteredList f execs = do
 sbFilteredParams ::
      MonadReadWorld m => SBListFunc -> [SubBuilderExec] -> DocResult m [PathedParams]
 sbFilteredParams f execs = snd <$> unzip <$> sbFilteredList f execs
-
--- | Add fields present in the first @Params@ to the @PathedParams@ if they're
---   missing from the second.
-pathedParamDefault :: Params -> PathedParams -> PathedParams
-pathedParamDefault def (PathedParams params ppath) =
-  PathedParams (paramUnion params def) ppath
 
 -- | Determine files needed by a @SubBuilderExec@.
 sbNeededFiles :: MonadReadWorld m => SBListFunc -> [SubBuilderExec] -> DocResult m FilePathSet

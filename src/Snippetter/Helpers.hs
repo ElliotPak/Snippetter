@@ -26,14 +26,24 @@ module Snippetter.Helpers
   , mapParam
   ) where
 
-import Data.Yaml (Object, Value(Object, String, Number, Bool))
+import Data.Yaml
+  ( Parser
+  , Object
+  , Value(Object, String, Number, Bool, Array)
+  , parseJSON
+  , parseEither
+  , FromJSON
+  )
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
 import Data.Hashable
 import qualified Data.Text as T
+import qualified Data.Vector as V
 import Prelude hiding (lookup)
 import Snippetter.Build
+import Snippetter.Layout
 import Snippetter.Utilities
+import Snippetter.IO
 import System.FilePath
 
 -- | Looks up a parameter and, if found, converts it to a type via the provided
@@ -65,6 +75,11 @@ unObject :: Value -> Maybe Params
 unObject (Object o) = Just o
 unObject _ = Nothing
 
+-- | Unpack an Object from an Aeson Value.
+unArray :: Value -> Maybe [Value]
+unArray (Array a) = Just (V.toList a)
+unArray _ = Nothing
+
 -- | Shorthand for @lookupParams unText@.
 lookupText :: T.Text -> Params -> Either BuilderError T.Text
 lookupText = lookupParams unText
@@ -73,13 +88,34 @@ lookupText = lookupParams unText
 lookupObject :: T.Text -> Params -> Either BuilderError Params
 lookupObject = lookupParams unObject
 
--- | Shorthand for @lookupDefault unObject@.
-lookupObjectDefault :: Params -> T.Text -> Params -> Params
-lookupObjectDefault = lookupDefault unObject
+-- | Shorthand for @lookupParams unArray@.
+lookupArray :: T.Text -> Params -> Either BuilderError [Value]
+lookupArray = lookupParams unArray
+
+lookupArrayOf :: FromJSON a => T.Text -> Params -> Either BuilderError [a]
+lookupArrayOf key map = do
+  arr <- lookupArray key map
+  let errorMapping x = MiscBuilderError $ T.pack x
+  let mapping x = mapLeft errorMapping (parseEither parseJSON x)
+  mapM mapping arr
+
+lookupArrayOfObject key map =
+  lookupArrayOf key map :: Either BuilderError [Object]
+
+lookupArrayOfText key map =
+  lookupArrayOf key map :: Either BuilderError [T.Text]
 
 -- | Shorthand for @lookupDefault unText@.
 lookupTextDefault :: T.Text -> T.Text -> Params -> T.Text
 lookupTextDefault = lookupDefault unText
+
+-- | Shorthand for @lookupDefault unObject@.
+lookupObjectDefault :: Params -> T.Text -> Params -> Params
+lookupObjectDefault = lookupDefault unObject
+
+-- | Shorthand for @lookupDefault unArray@.
+lookupArrayDefault :: [Value] -> T.Text -> Params -> [Value]
+lookupArrayDefault = lookupDefault unArray
 
 -- | Shorthand for creating a @text@ (the @Content@) from a @String@.
 string str = text $ T.pack str
@@ -154,3 +190,13 @@ orderByParam t a1 a2 = unwrap (HM.lookup t $ pfp a1) (HM.lookup t $ pfp a2)
 -- | Map the Params part of the given 'SBEntry'.
 mapParam :: (Params -> Params) -> SBEntry -> SBEntry
 mapParam func (b, (PathedParams p fp)) = (b, PathedParams (func p) fp)
+
+multiBuilder :: MonadReadWorld m => MetaBuilder m
+multiBuilder bmap path params = do
+  theseParams <- resultLiftEither $ lookupArrayOfObject "values" params
+  files <- resultLiftEither $ lookupArrayOfText "files" params
+  def <- resultLiftEither $ lookupObject "default" params
+  let pathedParams = map (`PathedParams` path) theseParams
+  let filesText = map T.unpack files
+  all <- mergeParams pathedParams filesText def `mapResultError` BuilderYamlError
+  return []

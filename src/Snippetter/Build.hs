@@ -107,6 +107,7 @@ extractPageBuilder (NamedPageBuilder _ b) = b
 data BuilderError
   = AbsentKey T.Text
   | WrongKeyType T.Text
+  | BuilderYamlError YamlError
   | MiscBuilderError T.Text
   deriving (Eq)
 

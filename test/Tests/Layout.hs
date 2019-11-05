@@ -6,9 +6,9 @@ module Tests.Layout
 
 import Control.Monad.Trans.Except
 import qualified Data.ByteString.Char8 as B
+import qualified Data.Yaml as Y
 import qualified Data.HashSet as HS
 import qualified Data.Text as T
-import qualified Data.Yaml as Y
 import Snippetter.Build
 import Snippetter.Helpers
 import Snippetter.IO
@@ -24,11 +24,13 @@ files =
   , ("baz", ("- title: from-file", startTime))
   ]
 
-filesPlus name contents = files ++ [(name, (contents, startTime))]
-
-passPlus contents = passMockFiles (filesPlus "test" contents)
-
-failPlus contents = failMockFiles (filesPlus "test" contents)
+passPlus' ::
+     (Eq a, Show a, Eq e, Show e)
+  => T.Text
+  -> Result e MockIO a
+  -> a
+  -> Assertion
+passPlus' = passPlus files
 
 sameFileBuilder :: PageBuilder
 sameFileBuilder params = return $ snippet "foo"
@@ -41,17 +43,10 @@ sameFileBuild' = NamedPageBuilder "same" sameFileBuilder
 noFileBuild' = NamedPageBuilder "same" noFileBuilder 
 
 sameFileBuild =
-  Build sameFileBuild' (makePathed emptyParams) "output"
+  Build sameFileBuild' (pathedP emptyParams) "output"
 
 noFileBuild =
-  Build noFileBuild' (makePathed emptyParams) "output"
-
-fromText str =
-  unObject (Y.decodeEither' (B.pack str) :: Either Y.ParseException Y.Value)
-  where
-    unObject (Right (Y.Object o)) = o
-
-makePathed o = PathedParams o Nothing
+  Build noFileBuild' (pathedP emptyParams) "output"
 
 tests = 
   [ testGroup "Layout File Parsing" testLayoutParse
@@ -96,21 +91,21 @@ meta _ _ _ = return [Copy "foo" "bar", Move "thing" "thing2"]
 bmap = insertMetaBuilder "metatest" meta $ 
     insertPageBuilders [ ("same", sameFileBuilder)
                        , ("no", noFileBuilder)
-                       ] emptyBuilderMap
+                       ] helperBmap
 
 testLayoutParse =
   [ testCase "Copy, good example" $
-    passPlus copyGood (loadLayoutFile bmap "test") [pathedSA $ Copy "foo" "bar"]
+    passPlus' copyGood (loadLayoutFile bmap "test") [pathedSA $ Copy "foo" "bar"]
   , testCase "Move, good example" $
-    passPlus moveGood (loadLayoutFile bmap "test") [pathedSA $ Move "foo" "bar"]
+    passPlus' moveGood (loadLayoutFile bmap "test") [pathedSA $ Move "foo" "bar"]
   , testCase "Page builder, good example" $
-    passPlus buildPage1 (loadLayoutFile bmap "test") [pathedSA $ Build sameFileBuild' (pathedP emptyParams) "outtest"]
+    passPlus' buildPage1 (loadLayoutFile bmap "test") [pathedSA $ Build sameFileBuild' (pathedP' emptyParams) "outtest"]
   , testCase "Meta builder, good example" $
-    passPlus buildMeta1 (loadLayoutFile bmap "test") [pathedSA $ Copy "foo" "bar", pathedSA $ Move "thing" "thing2"]
+    passPlus' buildMeta1 (loadLayoutFile bmap "test") [pathedSA $ Copy "foo" "bar", pathedSA $ Move "thing" "thing2"]
   ]
   where
     pathedSA x = PathedSiteAction x (Just "test")
-    pathedP x = PathedParams x (Just "test")
+    pathedP' x = PathedParams x (Just "test")
     copyGood = "- type: copy\n  from: foo\n  to: bar"
     moveGood = "- type: move\n  from: foo\n  to: bar"
     buildPage1 = "- type: build-page\n  builder-name: same\n  output: outtest\n  parameters: {}"

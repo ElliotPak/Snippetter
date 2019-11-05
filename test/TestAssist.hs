@@ -10,6 +10,9 @@ import Data.Time.Calendar
 import Data.Time.Clock
 import Snippetter.IO
 import Snippetter.Utilities
+import Snippetter.Helpers
+import qualified Data.ByteString.Char8 as B
+import qualified Data.Yaml as Y
 import System.Exit
 import Test.Tasty.HUnit
 
@@ -136,3 +139,26 @@ failMockFiles files = failMock (MockIOState (HM.fromList files) [] startTime)
 
 getMockStateFiles files =
   getMockState (MockIOState (HM.fromList files) [] startTime)
+
+type FileList = [(FilePath, (T.Text, UTCTime))]
+
+filesPlus :: FileList -> FilePath -> T.Text -> FileList
+filesPlus files name contents = files ++ [(name, (contents, startTime))]
+
+passPlus ::
+     (Eq a, Show a, Eq e, Show e)
+  => FileList
+  -> T.Text
+  -> Result e MockIO a
+  -> a
+  -> Assertion
+passPlus files contents = passMockFiles (filesPlus files "test" contents)
+
+failPlus files contents = failMockFiles (filesPlus files "test" contents)
+
+paramsFromText str =
+  unObject (Y.decodeEither' (B.pack str) :: Either Y.ParseException Y.Value)
+  where
+    unObject (Right (Y.Object o)) = o
+
+pathedP pp = PathedParams pp Nothing

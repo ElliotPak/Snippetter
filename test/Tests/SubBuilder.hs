@@ -49,28 +49,21 @@ fileBuilder' params = do
   temp <- lookupText "title" params
   return $ snippet $ T.unpack temp
 
-fromText str =
-  unObject (Y.decodeEither' (B.pack str) :: Either Y.ParseException Y.Value)
-  where
-    unObject (Right (Y.Object o)) = o
+params1' =  paramsFromText "title: foo"
 
-makePathed o = PathedParams o Nothing
+params2' = paramsFromText "title: bar"
 
-params1' =  fromText "title: foo"
+params3' = paramsFromText "title: baz"
 
-params2' = fromText "title: bar"
+paramsNoTitle' = paramsFromText "something: test"
 
-params3' = fromText "title: baz"
+params1 = pathedP params1'
 
-paramsNoTitle' = fromText "something: test"
+params2 = pathedP params2'
 
-params1 = makePathed params1'
+params3 = pathedP params3'
 
-params2 = makePathed params2'
-
-params3 = makePathed params3'
-
-paramsNoTitle = makePathed paramsNoTitle'
+paramsNoTitle = pathedP paramsNoTitle'
 
 smEmpty = singleSubBuilder basicBuilder emptyParams [] [] id
 

@@ -17,6 +17,8 @@ module Snippetter.Layout
   , insertPageBuilders
   , insertMetaBuilder
   , insertMetaBuilders
+  , getPageBuilder
+  , getMetaBuilder
   -- * Site Actions
   , SiteAction (..)
   , PathedSiteAction (..)
@@ -73,6 +75,14 @@ instance Show LayoutError where
   show (LayoutFileError e) = show e
   show (MissingBuilder t) =
     "The builder \"" <> T.unpack t <> "\" was missing from the builder map."
+  show (MetaBuilderError t fp be) =
+    "While executing meta-builder " <>
+    show t <> " from " <> f <> ":\n" <> indentFourStr (show be)
+    where
+      f =
+        case fp of
+          Nothing -> "a Haskell source file"
+          Just a -> "the YAML file \"" <> a <> "\""
   show (MiscLayoutError t) =
     "An error occured in the layout processing phase:" <> T.unpack t
 
@@ -110,7 +120,7 @@ data BuilderMap m =
   BuilderMap 
     { pageBuilders :: HM.HashMap T.Text NamedPageBuilder
     , metaBuilders :: HM.HashMap T.Text (NamedMetaBuilder m)
-    }
+    } deriving (Show)
 
 -- | Insert a 'PageBuilder' into a 'BuilderMap' as a 'NamedPageBuilder'.
 insertPageBuilder :: T.Text -> PageBuilder -> BuilderMap m -> BuilderMap m

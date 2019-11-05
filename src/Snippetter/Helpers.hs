@@ -18,6 +18,9 @@ module Snippetter.Helpers
   , replaceText
   , singleSubBuilder
   , subBuilderOnFile
+  -- * Builders and BuilderMap
+  , helperBmap
+  , multiBuilder
   -- * Helpers for 'SBListFunc's
   , paramsFromPair
   , pfp
@@ -34,6 +37,7 @@ import Data.Yaml
   , parseEither
   , FromJSON
   )
+import Debug.Trace
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
 import Data.Hashable
@@ -191,12 +195,26 @@ orderByParam t a1 a2 = unwrap (HM.lookup t $ pfp a1) (HM.lookup t $ pfp a2)
 mapParam :: (Params -> Params) -> SBEntry -> SBEntry
 mapParam func (b, (PathedParams p fp)) = (b, PathedParams (func p) fp)
 
+helperBmap :: MonadReadWorld m => BuilderMap m
+helperBmap =
+  insertMetaBuilders
+    [ ("multi-builder", multiBuilder)
+    ] emptyBuilderMap
+
 multiBuilder :: MonadReadWorld m => MetaBuilder m
 multiBuilder bmap path params = do
-  theseParams <- resultLiftEither $ lookupArrayOfObject "values" params
+  builderName <- resultLiftEither $ lookupText "builder-name" params
+  let bmapErrorMapping _ = AbsentKey "builder-name"
+  builder <- resultLiftEither $ mapLeft bmapErrorMapping (getPageBuilder builderName bmap)
+  theseParams <- resultLiftEither $ lookupArrayOfObject "params" params
   files <- resultLiftEither $ lookupArrayOfText "files" params
   def <- resultLiftEither $ lookupObject "default" params
   let pathedParams = map (`PathedParams` path) theseParams
   let filesText = map T.unpack files
   all <- mergeParams pathedParams filesText def `mapResultError` BuilderYamlError
-  return []
+  filenameKey <- resultLiftEither $ lookupText "filename-key" params
+  let mapParams :: PathedParams -> Either BuilderError SiteAction
+      mapParams m = do
+        outname <- lookupText filenameKey (Snippetter.Utilities.params m)
+        return $ Build builder m (T.unpack outname)
+  resultLiftEither $ mapM mapParams all

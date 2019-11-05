@@ -186,9 +186,25 @@ instance MonadWriteWorld IO where
     results <- readProcessWithExitCode process' args' stdin'
     return $ textify results
   notifyUser = notifyUserIO
-  fileWatch dir action = withManager $ \mgr -> do
-    watchTree mgr dir (const True) $ \_ -> action
-    forever $ threadDelay 1000000
+  fileWatch dir action = do
+    -- this mvar exists to prevent multiple threads building the site
+    -- simultaneously
+    lock <- newMVar ()
+    withManager $ \mgr -> do
+      watchTree mgr dir (const True) $ \file -> do
+        isLocked <- not <$> isEmptyMVar lock
+        when (isLocked) $ do
+          _ <- takeMVar lock
+          case file of
+            (Added path _ _) -> do
+              isFile <- fileExists path
+              when isFile action
+            (Modified path _ _) -> do
+              isFile <- fileExists path
+              when isFile action
+            otherwise -> return ()
+          putMVar lock ()
+      forever $ threadDelay 1000000
   clearNotify = return ()
 
 -- | Shorthand for @notifyUser InProgress@.

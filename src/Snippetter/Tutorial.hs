@@ -62,6 +62,10 @@ import Data.Text (Text)
     which can be used by replacing @Layout@ in the name with @Actions@. See
     "Snippetter.Layout" and "Snippetter.DepManager" for more info.
 
+    In addition, if you want to rebuild the site upon any file changes, use
+    'fileWatch'. As an example, @fileWatch "./resources" ACTION@, where
+    @ACTION@ is of the type @MonadWriteWorld m => m ()@.
+
     = Page Builders
 
     'PageBuilder's specify how to take a set of parameters (i.e. a JSON object)

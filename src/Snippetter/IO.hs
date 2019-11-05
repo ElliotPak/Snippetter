@@ -346,7 +346,7 @@ paramsFromFile file = do
 mergeParams ::
      MonadReadWorld m =>
      [PathedParams] ->
-     [FilePath] -> 
+     [FilePath] ->
      Params ->
      YamlResult m [PathedParams]
 mergeParams params files def = do

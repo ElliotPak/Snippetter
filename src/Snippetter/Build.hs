@@ -45,7 +45,6 @@ module Snippetter.Build
   ) where
 
 import Control.Monad
-import qualified Data.ByteString.Char8 as B
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
 import qualified Data.Text as T
@@ -309,16 +308,6 @@ sbNeededFiles f execs = do
   containing <- conNeededFiles entries
   let paramFiles = HS.fromList $ concat $ map sbFiles execs
   return $ paramFiles <> containing
-
--- | Get a textual representation of a @Params@.
-showParams :: Params -> T.Text
-showParams params
-  | nullParams params = ""
-  | otherwise = (indentWithListMarker . T.pack . B.unpack . Y.encode) params
-
--- | Get a textual representation of the @Params@ within a @PathedParams@.
-showPathedParams :: PathedParams -> T.Text
-showPathedParams (PathedParams params _) = showParams params
 
 -- | Show a @SubBuilderExec@ (see @conShow@).
 sbeShow :: SubBuilderExec -> T.Text

@@ -20,6 +20,8 @@ module Snippetter.Utilities
   , PathedParams(..)
   , emptyPathedParams
   , pathedParamDefault
+  , showParams
+  , showPathedParams
     -- * Other important stuff
   , FilePathSet
     -- * Text/String utilities
@@ -48,6 +50,9 @@ import Data.Yaml (Object, Value(Object, String))
 import Data.HashMap.Strict (HashMap, lookup)
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
+import qualified Data.ByteString.Char8 as B
+import qualified Data.Text as T
+import qualified Data.Yaml as Y
 import Data.Hashable
 import Data.Maybe
 import qualified Data.Text as T
@@ -132,6 +137,16 @@ emptyPathedParams = PathedParams HM.empty Nothing
 pathedParamDefault :: Params -> PathedParams -> PathedParams
 pathedParamDefault def (PathedParams params ppath) =
   PathedParams (paramUnion params def) ppath
+
+-- | Get a textual representation of a @Params@.
+showParams :: Params -> T.Text
+showParams params
+  | nullParams params = ""
+  | otherwise = (indentWithListMarker . T.pack . B.unpack . Y.encode) params
+
+-- | Get a textual representation of the @Params@ within a @PathedParams@.
+showPathedParams :: PathedParams -> T.Text
+showPathedParams (PathedParams params _) = showParams params
 
 -- | Maps all elements in a 'HS.HashSet'.
 mapSet :: (Eq b, Hashable b) => (a -> b) -> HS.HashSet a -> HS.HashSet b

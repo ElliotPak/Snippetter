@@ -203,7 +203,20 @@ data SiteAction
   | Move FilePath FilePath
   | Delete FilePath
   | Run [T.Text] T.Text
-  deriving (Show, Eq)
+  deriving (Eq)
+
+instance Show SiteAction where
+  show (Build (NamedPageBuilder t _) (PathedParams params pp) fp) =
+    "Build \"" <> fp <> "\" with \"" <> T.unpack t <> "\" using:\n"
+      <> indentFourStr (T.unpack $ showParams params) <>
+        case pp of
+          Nothing -> "\nfrom Haskell source"
+          Just a -> "\nfrom the file \"" <> a <> "\""
+  show (Copy from to) = "Copying from \"" <> from <> "\" to \"" <> to <> "\""
+  show (Move from to) = "Moving from \"" <> from <> "\" to \"" <> to <> "\""
+  show (Delete file) = "Deletion of \"" <> file <> "\""
+  show (Run args stdin) = "Running of \"" <> intercalate " " (map T.unpack args)
+    <> "\" with standard in \"" <> T.unpack stdin <> "\""
 
 instance Hashable SiteAction where
     hashWithSalt salt (Build nb pp fp) = salt `hashWithSalt` 

@@ -29,6 +29,7 @@ module Snippetter.IO
   ) where
 
 import Control.Applicative
+import Control.Concurrent
 import Control.Exception
 import Control.Monad
 import Control.Monad.Trans
@@ -48,6 +49,8 @@ import System.FilePath.Posix
 import System.IO
 import System.IO.Error
 import System.Process hiding (runProcess)
+import System.FSNotify
+import Twitch
 
 -- | Possible errors when reading files.
 data FileError
@@ -135,6 +138,7 @@ class MonadReadWorld m =>
   moveFile :: FilePath -> FilePath -> FileResult m ()
   runProcess :: T.Text -> [T.Text] -> T.Text -> m (ExitCode, T.Text, T.Text)
   notifyUser :: NotifyType -> T.Text -> m ()
+  fileWatch :: FilePath -> m () -> m ()
   clearNotify :: m ()
 
 -- | Pack @runProcess@ into a FileResult.
@@ -182,6 +186,9 @@ instance MonadWriteWorld IO where
     results <- readProcessWithExitCode process' args' stdin'
     return $ textify results
   notifyUser = notifyUserIO
+  fileWatch dir action = withManager $ \mgr -> do
+    watchTree mgr dir (const True) $ \_ -> action
+    forever $ threadDelay 1000000
   clearNotify = return ()
 
 -- | Shorthand for @notifyUser InProgress@.

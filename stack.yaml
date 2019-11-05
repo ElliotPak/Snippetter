@@ -37,7 +37,8 @@ packages:
 # Dependency packages to be pulled from upstream that are not in the resolver
 # using the same syntax as the packages field.
 # (e.g., acme-missiles-0.3)
-# extra-deps: []
+extra-deps:
+  - "twitch-0.1.7.2@sha256:146a887da4d2d21e489ff823a6058add40c1f9c5ee8e0d00356b497092c9c624,2988"
 
 # Override default flag values for local packages and extra-deps
 # flags: {}
